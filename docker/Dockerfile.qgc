@@ -1,0 +1,79 @@
+# QGroundControl Container
+# Ground Control Station for PX4/ArduPilot drones
+#
+# This container runs QGroundControl with X11 forwarding support
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install dependencies for QGroundControl AppImage
+RUN apt-get update && apt-get install -y \
+    # X11 and display
+    libxcb-xinerama0 \
+    libxcb-cursor0 \
+    libxkbcommon-x11-0 \
+    libxcb-shape0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-render-util0 \
+    libxcb-randr0 \
+    x11-utils \
+    # OpenGL
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    libegl1-mesa \
+    # Audio (QGC uses speech)
+    libpulse0 \
+    libasound2 \
+    # Fonts
+    fonts-dejavu \
+    # Networking
+    libglib2.0-0 \
+    # SDL for joystick support
+    libsdl2-2.0-0 \
+    # FUSE for AppImage (fallback method)
+    libfuse2 \
+    # Utilities
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download QGroundControl AppImage
+WORKDIR /opt
+RUN wget -q "https://github.com/mavlink/qgroundcontrol/releases/download/v4.4.3/QGroundControl.AppImage" \
+    -O QGroundControl.AppImage \
+    && chmod +x QGroundControl.AppImage
+
+# Extract AppImage (avoids FUSE requirement in container)
+RUN /opt/QGroundControl.AppImage --appimage-extract \
+    && mv squashfs-root /opt/QGroundControl \
+    && rm QGroundControl.AppImage
+
+# Create non-root user
+ARG USERNAME=qgc
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME
+
+# Create QGC config directory
+RUN mkdir -p /home/$USERNAME/.config/QGroundControl.org \
+    && chown -R $USERNAME:$USERNAME /home/$USERNAME
+
+# Set environment for X11
+ENV DISPLAY=:0
+ENV QT_X11_NO_MITSHM=1
+ENV QT_GRAPHICSSYSTEM=native
+
+# Switch to non-root user
+USER $USERNAME
+WORKDIR /home/$USERNAME
+
+# Default command - run QGroundControl
+CMD ["/opt/QGroundControl/AppRun"]
+

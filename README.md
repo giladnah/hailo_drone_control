@@ -1,36 +1,42 @@
 # PX4 Cube+ Orange Development Environment
 
-A containerized development environment for PX4 autopilot development targeting the Cube+ Orange flight controller. Features switchable profiles for SITL (Software-in-the-Loop) and HITL (Hardware-in-the-Loop) simulation modes.
+A fully containerized development environment for PX4 autopilot development targeting the Cube+ Orange flight controller. All tools run in Docker - no host installation required.
 
 ## Features
 
-- **Docker-based isolation** - Reproducible development environment with all dependencies
-- **Switchable profiles** - Easily switch between SITL, HITL, and development modes
-- **PX4 + Gazebo Garden** - Modern simulation stack with physics-accurate modeling
-- **MAVLink routing** - Seamless communication with QGroundControl and MAVSDK
-- **Intel GPU support** - Mesa drivers for laptops with integrated graphics
-- **VS Code Dev Containers** - Full IDE integration with debugging support
+- **All-in-Docker Stack**: PX4 SITL, Gazebo, QGroundControl, and MAVSDK all containerized
+- **One-Command Startup**: `./scripts/px4ctl.sh start` launches everything
+- **Switchable Profiles**: SITL, HITL, headless, and development modes
+- **Example Scripts**: Ready-to-run autonomous flight demonstrations
+- **Integration Tests**: Automated testing of the complete stack
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Docker Network: px4-net                       │
+│  ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌────────┐  │
+│  │ PX4 SITL  │───►│  MAVLink  │───►│    QGC    │    │Control │  │
+│  │ + Gazebo  │    │  Router   │───►│  (GUI)    │    │Scripts │  │
+│  └───────────┘    └───────────┘    └───────────┘    └────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 
 ## Prerequisites
 
-- Ubuntu 22.04 LTS (recommended)
-- Docker Engine 20.10+
-- Docker Compose v2.0+
-- QGroundControl (for ground station)
-- X11 display server (for Gazebo GUI)
+- **Docker Engine** 20.10+
+- **Docker Compose** v2.0+
+- **X11 Display** (for GUI applications)
+- **Ubuntu 22.04** recommended
 
-### Install Docker
+### Quick Docker Install
 
 ```bash
-# Install Docker
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
-
-# Install Docker Compose plugin
-sudo apt-get update
-sudo apt-get install docker-compose-plugin
-
-# Log out and back in for group changes
+# Log out and back in
 ```
 
 ## Quick Start
@@ -43,88 +49,139 @@ cd ~/projects/hailo_drone_control
 # Copy environment configuration
 cp env.example .env
 
-# Allow X11 forwarding (run each session)
+# Make scripts executable
+chmod +x scripts/*.sh
+```
+
+### 2. Start the Full Stack
+
+```bash
+# Allow X11 forwarding
 xhost +local:docker
+
+# Start everything (builds images on first run)
+./scripts/px4ctl.sh start
 ```
 
-### 2. Build the Docker Image
+This launches:
+- **PX4 SITL** with Gazebo simulator
+- **MAVLink Router** for telemetry distribution
+- **QGroundControl** GUI
+- **Control container** for running scripts
+
+### 3. Run the Demo Flight
+
+Once QGroundControl shows the drone connected:
 
 ```bash
-docker compose build
+# Execute the hover & rotate demo
+./scripts/px4ctl.sh run examples/hover_rotate.py
 ```
 
-### 3. Run SITL Simulation
+The drone will:
+1. Arm and take off to 5m
+2. Hover and rotate 360°
+3. Land safely
+
+### 4. Stop Everything
 
 ```bash
-# Start SITL with Gazebo
-docker compose --profile sitl up
-
-# Or run in background
-docker compose --profile sitl up -d
+./scripts/px4ctl.sh stop
 ```
 
-### 4. Connect QGroundControl
+## px4ctl.sh - Command Reference
 
-1. Open QGroundControl
-2. Go to **Application Settings > Comm Links**
-3. Add a new UDP connection:
-   - Name: `PX4 SITL`
-   - Type: `UDP`
-   - Port: `14550`
-4. Connect to the link
-
-## Usage
-
-### Simulation Modes
-
-| Profile | Command | Description |
-|---------|---------|-------------|
-| `sitl` | `docker compose --profile sitl up` | Software simulation with Gazebo |
-| `hitl` | `docker compose --profile hitl up` | Hardware-in-the-loop with Cube+ Orange |
-| `dev` | `docker compose --profile dev run --rm dev bash` | Interactive development shell |
-
-### Development Shell
-
-The dev profile provides an interactive environment with all tools pre-installed:
+The main control script for managing the environment:
 
 ```bash
-# Start development shell
-docker compose --profile dev run --rm dev bash
-
-# Inside container - useful commands:
-px4-sitl      # Run SITL with Gazebo x500
-px4-cube      # Build firmware for Cube+ Orange
-px4-clean     # Clean build artifacts
-cdpx4         # Navigate to PX4 source
+./scripts/px4ctl.sh <command> [options]
 ```
 
-### Building Firmware for Cube+ Orange
+| Command | Description |
+|---------|-------------|
+| `start [profile]` | Start environment (default: full) |
+| `stop` | Stop all services |
+| `restart [profile]` | Restart the environment |
+| `status` | Show service status |
+| `logs [service]` | Tail logs (all or specific) |
+| `shell` | Open development shell |
+| `run <script>` | Run Python script in container |
+| `test` | Run integration tests |
+| `build` | Rebuild Docker images |
+| `clean` | Remove containers and volumes |
+
+### Examples
 
 ```bash
-# Enter development shell
-docker compose --profile dev run --rm dev bash
+# Start headless (no GUI - for CI/testing)
+./scripts/px4ctl.sh start headless
 
-# Build firmware
-cd /workspace/PX4-Autopilot
-make px4_fmu-v6x_default
+# View specific service logs
+./scripts/px4ctl.sh logs px4-sitl
 
-# Firmware will be at:
-# build/px4_fmu-v6x_default/px4_fmu-v6x_default.px4
+# Open interactive shell
+./scripts/px4ctl.sh shell
+
+# Run custom script
+./scripts/px4ctl.sh run examples/hover_rotate.py --altitude 10
 ```
 
-### HITL Mode (Hardware-in-the-Loop)
+## Profiles
 
-HITL requires a physical Cube+ Orange connected via USB:
+| Profile | Services | Use Case |
+|---------|----------|----------|
+| `full` | SITL + Gazebo + QGC + Control | Development with GUI |
+| `headless` | SITL + Control | CI/CD, automated testing |
+| `sitl` | SITL + Gazebo only | Simulation only |
+| `dev` | Development shell | Interactive development |
+| `hitl` | Hardware-in-the-loop | Physical Cube+ Orange |
+
+## Example: Hover & Rotate
+
+The included demo script demonstrates autonomous flight:
 
 ```bash
-# Install udev rules (one-time setup)
-sudo ./scripts/setup_udev.sh
+./scripts/px4ctl.sh run examples/hover_rotate.py [options]
+```
 
-# Verify device is detected
-ls -la /dev/cube_orange
+Options:
+- `--altitude METERS` - Takeoff altitude (default: 5.0)
+- `--rotation DEGREES` - Rotation amount (default: 360)
+- `--speed DEG/SEC` - Rotation speed (default: 30)
 
-# Start HITL
-docker compose --profile hitl up
+```bash
+# Higher altitude, double rotation
+./scripts/px4ctl.sh run examples/hover_rotate.py --altitude 10 --rotation 720
+
+# Slow rotation
+./scripts/px4ctl.sh run examples/hover_rotate.py --speed 15
+```
+
+## Project Structure
+
+```
+hailo_drone_control/
+├── docker/
+│   ├── Dockerfile          # PX4 + Gazebo image
+│   ├── Dockerfile.qgc      # QGroundControl image
+│   └── entrypoint.sh       # Container startup
+├── config/
+│   ├── drone_config.yml    # Vehicle configuration
+│   ├── mavlink-router.conf # MAVLink routing
+│   └── params/             # PX4 parameters
+├── scripts/
+│   ├── px4ctl.sh           # Main CLI tool
+│   ├── wait_for_mavlink.py # Health check utility
+│   ├── setup_udev.sh       # Device rules (HITL)
+│   └── post_create.sh      # Dev container setup
+├── examples/
+│   └── hover_rotate.py     # Demo flight script
+├── tests/
+│   ├── test_environment.py # Unit tests
+│   └── test_integration.py # Integration tests
+├── docker-compose.yml      # Service definitions
+├── ARCHITECTURE.md         # Technical documentation
+└── README.md               # This file
 ```
 
 ## Configuration
@@ -135,146 +192,160 @@ Edit `.env` to customize:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VEHICLE_ID` | `1` | Vehicle identifier (1-255) |
+| `VEHICLE_ID` | `1` | Vehicle identifier |
 | `AIRFRAME` | `x500` | Airframe model |
 | `MAV_SYS_ID` | `1` | MAVLink system ID |
-| `QGC_PORT` | `14550` | QGroundControl UDP port |
+| `QGC_PORT` | `14550` | QGC MAVLink port |
 | `MAVSDK_PORT` | `14540` | MAVSDK API port |
-| `SIM_MODE` | `sitl` | Simulation mode |
+| `DISPLAY` | `:0` | X11 display |
 
 ### Vehicle Configuration
 
-The `config/drone_config.yml` file contains vehicle-specific settings:
+`config/drone_config.yml` contains vehicle-specific settings:
+- Frame configuration
+- MAVLink endpoints
+- Safety parameters (geofence, RTL, failsafe)
 
-- Vehicle frame and motor configuration
-- MAVLink settings
-- Communication endpoints
-- Safety parameters (geofence, RTL, battery failsafe)
+## Running Tests
 
-### MAVLink Routing
+### Integration Tests
 
-The `config/mavlink-router.conf` file defines telemetry routing:
+```bash
+# Start the stack first
+./scripts/px4ctl.sh start headless
 
-- SITL/HITL input endpoints
-- QGroundControl forwarding
-- MAVSDK API endpoint
-- Optional TCP for Mission Planner
-
-## Project Structure
-
-```
-hailo_drone_control/
-├── docker/
-│   ├── Dockerfile          # Container image definition
-│   └── entrypoint.sh       # Container startup script
-├── config/
-│   ├── drone_config.yml    # Vehicle configuration
-│   ├── mavlink-router.conf # MAVLink routing
-│   └── params/
-│       └── x500_quad.params # PX4 parameters
-├── scripts/
-│   ├── setup_udev.sh       # udev rules installer
-│   └── post_create.sh      # Dev container setup
-├── .devcontainer/
-│   └── devcontainer.json   # VS Code integration
-├── docker-compose.yml      # Docker services
-├── env.example             # Environment template
-└── README.md
+# Run tests
+./scripts/px4ctl.sh test
 ```
 
-## VS Code Dev Containers
+### Environment Tests
 
-For the best development experience, use VS Code with the Dev Containers extension:
+```bash
+./scripts/px4ctl.sh shell
+python3 tests/test_environment.py
+```
 
-1. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-2. Open the project folder in VS Code
-3. Click **Reopen in Container** when prompted
-4. Wait for the container to build and PX4 to initialize
+## Network Ports
 
-### Included Extensions
-
-- C/C++ and CMake tools
-- Python with Black formatter
-- YAML support
-- Git integration (GitLens, Git Graph)
-- Docker support
+| Port | Protocol | Service |
+|------|----------|---------|
+| 14580 | UDP | PX4 SITL MAVLink |
+| 14550 | UDP | QGroundControl |
+| 14540 | UDP | MAVSDK / Offboard API |
+| 5760 | TCP | Mission Planner |
 
 ## Troubleshooting
 
-### Gazebo GUI Not Displaying
+### QGroundControl Not Displaying
 
 ```bash
-# Allow X11 connections from Docker
+# Allow Docker X11 access
 xhost +local:docker
 
 # Verify DISPLAY is set
 echo $DISPLAY
 
-# Test with a simple X11 app
-docker compose --profile dev run --rm dev xclock
+# Check X11 socket
+ls -la /tmp/.X11-unix/
 ```
 
-### Intel GPU Rendering Issues
-
-If Gazebo shows software rendering warnings:
+### Gazebo Rendering Issues (Intel GPU)
 
 ```bash
-# Check OpenGL support
-docker compose --profile dev run --rm dev glxinfo | grep "OpenGL renderer"
+# Check OpenGL info
+./scripts/px4ctl.sh shell
+glxinfo | grep "OpenGL renderer"
 
-# Force software rendering if needed (in .env)
-LIBGL_ALWAYS_SOFTWARE=1
+# Force software rendering if needed
+export LIBGL_ALWAYS_SOFTWARE=1
 ```
 
-### Serial Device Not Found (HITL)
+### Services Not Starting
 
 ```bash
-# Check USB device
-lsusb | grep -i cube
+# Check service status
+./scripts/px4ctl.sh status
 
-# View kernel messages
-dmesg | tail -20
+# View logs
+./scripts/px4ctl.sh logs
 
-# Reinstall udev rules
+# Rebuild images
+./scripts/px4ctl.sh build
+```
+
+### MAVLink Connection Issues
+
+```bash
+# Test MAVLink connectivity
+./scripts/px4ctl.sh shell
+python3 scripts/wait_for_mavlink.py --verbose
+
+# Check network
+docker network inspect px4-net
+```
+
+### Clean Restart
+
+```bash
+# Stop and remove everything
+./scripts/px4ctl.sh clean
+
+# Rebuild and start fresh
+./scripts/px4ctl.sh build
+./scripts/px4ctl.sh start
+```
+
+## HITL Mode (Hardware-in-the-Loop)
+
+To use with a physical Cube+ Orange:
+
+```bash
+# Install udev rules (one-time)
 sudo ./scripts/setup_udev.sh
+
+# Connect Cube+ Orange via USB
+# Verify device
+ls -la /dev/cube_orange
+
+# Start HITL mode
+./scripts/px4ctl.sh start hitl
 ```
 
-### Container Build Fails
+## Development
+
+### Interactive Shell
 
 ```bash
-# Clean Docker cache and rebuild
-docker compose build --no-cache
+./scripts/px4ctl.sh shell
 
-# Remove old volumes
-docker volume rm px4-autopilot-source
+# Inside container:
+cd /workspace/PX4-Autopilot
+make px4_sitl_default          # Build SITL
+make px4_fmu-v6x_default       # Build Cube+ Orange firmware
 ```
 
-## Ports Reference
+### VS Code Dev Containers
 
-| Port | Protocol | Service |
-|------|----------|---------|
-| 14550 | UDP | QGroundControl MAVLink |
-| 14540 | UDP | MAVSDK / Offboard API |
-| 14580 | UDP | SITL MAVLink input |
-| 5760 | TCP | Mission Planner |
-| 8080 | TCP | Gazebo web interface |
+1. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+2. Open folder in VS Code
+3. Click "Reopen in Container"
 
-## Future Enhancements
+### Adding Custom Scripts
 
-- [ ] ROS2 integration with Micro-XRCE-DDS bridge
-- [ ] Multi-vehicle simulation support
-- [ ] Automated CI/CD pipeline
-- [ ] Custom Gazebo worlds and models
+Place scripts in `examples/` and run with:
+
+```bash
+./scripts/px4ctl.sh run examples/your_script.py
+```
 
 ## Resources
 
 - [PX4 Documentation](https://docs.px4.io/)
 - [Cube+ Orange Manual](https://docs.cubepilot.org/)
+- [MAVSDK Python Guide](https://mavsdk.mavlink.io/main/en/python/)
 - [QGroundControl](https://docs.qgroundcontrol.com/)
-- [MAVSDK Python](https://mavsdk.mavlink.io/main/en/python/)
 - [Gazebo Garden](https://gazebosim.org/docs/garden/)
 
 ## License
 
-This project is provided as-is for development and research purposes.
-
+This project is provided for development and research purposes.
