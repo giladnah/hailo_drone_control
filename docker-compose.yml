@@ -1,0 +1,161 @@
+# PX4 Development Environment for Cube+ Orange
+# Docker Compose with switchable profiles for SITL/HITL/Dev modes
+#
+# Usage:
+#   SITL simulation:     docker compose --profile sitl up
+#   HITL with hardware:  docker compose --profile hitl up
+#   Development shell:   docker compose --profile dev run --rm dev bash
+
+x-common-env: &common-env
+  VEHICLE_ID: ${VEHICLE_ID:-1}
+  AIRFRAME: ${AIRFRAME:-x500}
+  MAV_SYS_ID: ${MAV_SYS_ID:-1}
+  QGC_PORT: ${QGC_PORT:-14550}
+  MAVSDK_PORT: ${MAVSDK_PORT:-14540}
+  # X11 Display forwarding
+  DISPLAY: ${DISPLAY:-:0}
+  # Intel GPU / Mesa settings
+  LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-0}
+  MESA_GL_VERSION_OVERRIDE: "3.3"
+
+x-common-volumes: &common-volumes
+  # PX4 source code (persistent across containers)
+  - px4-source:/workspace/PX4-Autopilot
+  # Configuration files
+  - ./config:/workspace/config:ro
+  # Logs (persistent)
+  - ./logs:/workspace/logs
+  # X11 socket for GUI
+  - /tmp/.X11-unix:/tmp/.X11-unix:rw
+  # Xauthority for X11 authentication
+  - ${XAUTHORITY:-$HOME/.Xauthority}:/home/px4dev/.Xauthority:ro
+
+services:
+  # ============================================
+  # SITL Service - Software-in-the-Loop simulation
+  # ============================================
+  sitl:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    image: px4-cube-orange:latest
+    container_name: px4-sitl
+    profiles:
+      - sitl
+    environment:
+      <<: *common-env
+      SIM_MODE: sitl
+      SITL_PORT: ${SITL_PORT:-14580}
+    volumes:
+      *common-volumes
+    ports:
+      # QGroundControl MAVLink
+      - "${QGC_PORT:-14550}:14550/udp"
+      # MAVSDK / Offboard API
+      - "${MAVSDK_PORT:-14540}:14540/udp"
+      # Gazebo web interface (optional)
+      - "8080:8080"
+    # Required for X11 forwarding with Intel GPU
+    devices:
+      - /dev/dri:/dev/dri
+    network_mode: host
+    privileged: false
+    stdin_open: true
+    tty: true
+
+  # ============================================
+  # HITL Service - Hardware-in-the-Loop with Cube+ Orange
+  # ============================================
+  hitl:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    image: px4-cube-orange:latest
+    container_name: px4-hitl
+    profiles:
+      - hitl
+    environment:
+      <<: *common-env
+      SIM_MODE: hitl
+      SERIAL_DEVICE: ${SERIAL_DEVICE:-/dev/cube_orange}
+      SERIAL_BAUD: ${SERIAL_BAUD:-921600}
+    volumes:
+      *common-volumes
+    ports:
+      # QGroundControl MAVLink
+      - "${QGC_PORT:-14550}:14550/udp"
+      # MAVSDK / Offboard API
+      - "${MAVSDK_PORT:-14540}:14540/udp"
+    # Pass through the Cube+ Orange USB device
+    devices:
+      - /dev/dri:/dev/dri
+      - ${SERIAL_DEVICE:-/dev/cube_orange}:/dev/ttyACM0
+    network_mode: host
+    privileged: false
+    stdin_open: true
+    tty: true
+
+  # ============================================
+  # Dev Service - Interactive development environment
+  # ============================================
+  dev:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    image: px4-cube-orange:latest
+    container_name: px4-dev
+    profiles:
+      - dev
+    environment:
+      <<: *common-env
+      SIM_MODE: dev
+    volumes:
+      # Mount PX4 source as read-write for development
+      - px4-source:/workspace/PX4-Autopilot
+      - ./config:/workspace/config
+      - ./logs:/workspace/logs
+      - ./scripts:/workspace/scripts:ro
+      # X11 socket
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/home/px4dev/.Xauthority:ro
+      # Mount workspace root for easy access to project files
+      - .:/workspace/project:ro
+    ports:
+      - "${QGC_PORT:-14550}:14550/udp"
+      - "${MAVSDK_PORT:-14540}:14540/udp"
+    devices:
+      - /dev/dri:/dev/dri
+    network_mode: host
+    privileged: false
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+
+  # ============================================
+  # MAVLink Router Service (standalone)
+  # ============================================
+  mavlink-router:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    image: px4-cube-orange:latest
+    container_name: mavlink-router
+    profiles:
+      - router
+    environment:
+      SIM_MODE: dev
+    volumes:
+      - ./config:/workspace/config:ro
+    command: ["mavlink-routerd", "-c", "/workspace/config/mavlink-router.conf"]
+    ports:
+      - "${QGC_PORT:-14550}:14550/udp"
+      - "${MAVSDK_PORT:-14540}:14540/udp"
+      - "5760:5760/tcp"
+    network_mode: host
+    restart: unless-stopped
+
+# Named volumes for persistent data
+volumes:
+  px4-source:
+    name: px4-autopilot-source
+

@@ -1,0 +1,155 @@
+# Centralized Drone Configuration
+# Frigate-style configuration for switchable vehicle setups
+#
+# This file defines vehicle parameters, MAVLink settings, and simulation endpoints.
+# Environment variables can override these values using ${VAR_NAME} syntax.
+
+# ==============================================
+# Vehicle Configuration
+# ==============================================
+vehicle:
+  # Unique identifier for this vehicle
+  id: ${VEHICLE_ID:1}
+
+  # Vehicle name for logging and identification
+  name: "Cube+ Orange Quadcopter"
+
+  # Airframe type
+  # Supported: x500, iris, typhoon_h480, standard_vtol, plane
+  airframe: ${AIRFRAME:x500}
+
+  # Frame configuration
+  frame:
+    type: quadcopter
+    # Motor configuration: x (X-frame), + (Plus-frame)
+    motor_layout: x
+    # Propeller direction (looking from above)
+    # CW = clockwise, CCW = counter-clockwise
+    motor_order: [CCW, CW, CW, CCW]  # FL, FR, BL, BR
+
+# ==============================================
+# MAVLink Configuration
+# ==============================================
+mavlink:
+  # MAVLink system ID (1-255)
+  # Each vehicle on the network should have a unique ID
+  system_id: ${MAV_SYS_ID:1}
+
+  # Component ID (default autopilot = 1)
+  component_id: 1
+
+  # MAVLink protocol version (1 or 2)
+  protocol_version: 2
+
+  # Heartbeat rate in Hz
+  heartbeat_rate: 1.0
+
+# ==============================================
+# Communication Endpoints
+# ==============================================
+endpoints:
+  # Ground Control Station (QGroundControl)
+  gcs:
+    protocol: udp
+    host: "127.0.0.1"
+    port: ${QGC_PORT:14550}
+    enabled: true
+
+  # Offboard API (MAVSDK, DroneKit)
+  offboard:
+    protocol: udp
+    host: "127.0.0.1"
+    port: ${MAVSDK_PORT:14540}
+    enabled: true
+
+  # TCP endpoint for Mission Planner
+  mission_planner:
+    protocol: tcp
+    host: "0.0.0.0"
+    port: 5760
+    enabled: false
+
+  # SITL simulation endpoint
+  sitl:
+    protocol: udp
+    host: "127.0.0.1"
+    port: ${SITL_PORT:14580}
+
+# ==============================================
+# Serial Configuration (for HITL)
+# ==============================================
+serial:
+  # Primary FMU port (Cube+ Orange)
+  fmu:
+    device: ${SERIAL_DEVICE:/dev/cube_orange}
+    baud_rate: ${SERIAL_BAUD:921600}
+    flow_control: false
+
+  # Telemetry radio (optional)
+  telemetry:
+    device: "/dev/ttyUSB0"
+    baud_rate: 57600
+    enabled: false
+
+# ==============================================
+# Simulation Settings
+# ==============================================
+simulation:
+  # Simulation mode: sitl, hitl, or disabled
+  mode: ${SIM_MODE:sitl}
+
+  # Gazebo settings
+  gazebo:
+    # World file to load
+    world: "default"
+    # Headless mode (no GUI)
+    headless: false
+    # Real-time factor (1.0 = real-time, >1.0 = faster)
+    real_time_factor: 1.0
+    # Verbose logging
+    verbose: false
+
+  # Initial position (for SITL)
+  spawn_position:
+    latitude: 47.397742
+    longitude: 8.545594
+    altitude: 488.0
+    heading: 0.0  # degrees
+
+# ==============================================
+# Logging Configuration
+# ==============================================
+logging:
+  # Log directory
+  directory: "/workspace/logs"
+
+  # Enable flight log recording
+  flight_log: true
+
+  # Enable MAVLink message logging
+  mavlink_log: false
+
+  # Log level: debug, info, warn, error
+  level: info
+
+# ==============================================
+# Safety Settings
+# ==============================================
+safety:
+  # Geofence (for SITL testing)
+  geofence:
+    enabled: true
+    max_radius_m: 500
+    max_altitude_m: 120
+
+  # Return-to-launch settings
+  rtl:
+    altitude_m: 30
+    speed_m_s: 5.0
+
+  # Battery failsafe
+  battery:
+    low_threshold: 0.25
+    critical_threshold: 0.10
+    action: "rtl"  # rtl, land, or none
+

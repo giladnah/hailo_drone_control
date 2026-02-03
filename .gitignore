@@ -1,0 +1,37 @@
+# Environment files
+.env
+*.env.local
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Build artifacts
+build/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PX4 artifacts (if cloned locally)
+PX4-Autopilot/
+
+# Firmware builds
+*.px4
+*.bin
+*.elf
+
