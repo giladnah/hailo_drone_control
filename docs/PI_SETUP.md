@@ -150,11 +150,12 @@ sudo apt-get update && sudo apt-get upgrade -y
 # Install Python and dependencies
 sudo apt-get install -y python3 python3-pip python3-venv python3-dev
 
-# Create virtual environment with system packages access
-python3 -m venv --system-site-packages ~/mavlink_venv
+# Create virtual environment with system packages access (in repo root)
+cd hailo_drone_control
+python3 -m venv --system-site-packages venv_mavlink
 
 # Activate the virtual environment
-source ~/mavlink_venv/bin/activate
+source venv_mavlink/bin/activate
 
 # Install MAVSDK and pyserial
 pip install mavsdk pyserial
@@ -165,25 +166,16 @@ python -c "import mavsdk; print(f'MAVSDK: {mavsdk.__version__}')"
 # Add user to dialout group (for serial port access)
 sudo usermod -aG dialout $USER
 
-# Add convenience alias to bashrc (optional)
-echo 'alias mavlink="source ~/mavlink_venv/bin/activate"' >> ~/.bashrc
-
 # Log out and back in for group changes to take effect
 ```
 
 **Using the virtual environment:**
 
 ```bash
-# Option 1: Use the alias
-source ~/.bashrc
-mavlink  # activates venv
+# From the repo root
+source venv_mavlink/bin/activate
 python your_script.py
 deactivate  # when done
-
-# Option 2: Activate directly
-source ~/mavlink_venv/bin/activate
-python your_script.py
-deactivate
 ```
 
 ## UART Configuration
@@ -335,14 +327,10 @@ python3 examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
 
 ### Test Script
 
-First, activate the virtual environment:
+First, activate the virtual environment (from repo root):
 
 ```bash
-# Using the alias (after running setup_pi.sh)
-mavlink
-
-# Or activate directly
-source ~/mavlink_venv/bin/activate
+source venv_mavlink/bin/activate
 ```
 
 Then use the test scripts to verify connectivity:

@@ -2,6 +2,9 @@
 .env
 *.env.local
 
+# Virtual environment
+venv_mavlink/
+
 # Logs
 logs/*
 !logs/.gitkeep

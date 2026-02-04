@@ -36,7 +36,9 @@ NC='\033[0m' # No Color
 PYTHON_MIN_VERSION="3.8"
 MAVSDK_VERSION=""  # Empty = latest
 UART_BAUD=57600
-VENV_DIR="$HOME/mavlink_venv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+VENV_DIR="$REPO_ROOT/venv_mavlink"
 
 # Flags
 SKIP_UART=false
@@ -486,18 +488,7 @@ EOF
 
     chmod +x ~/mavlink_test/test_connection.py
 
-    # Add convenience alias to bashrc
-    BASHRC="$HOME/.bashrc"
-    ALIAS_LINE="alias mavlink='source $VENV_DIR/bin/activate'"
-    if ! grep -q "alias mavlink=" "$BASHRC" 2>/dev/null; then
-        log_info "Adding 'mavlink' alias to $BASHRC..."
-        echo "" >> "$BASHRC"
-        echo "# MAVLink virtual environment alias" >> "$BASHRC"
-        echo "$ALIAS_LINE" >> "$BASHRC"
-    fi
-
     log_info "Test scripts created at ~/mavlink_test/"
-    log_info "Helper alias 'mavlink' added - run 'source ~/.bashrc' to use it"
 }
 
 # Print summary
@@ -538,16 +529,15 @@ print_summary() {
     echo "  GND ─────────────────────  GND (Pin 6, 9, 14, 20, 25, 30, 34, 39)"
     echo ""
     echo "Helper scripts:"
-    echo "  ~/mavlink_test/activate.sh      - Activate the venv"
-    echo "  ~/mavlink_test/mavlink_run      - Run Python with venv"
+    echo "  ~/mavlink_test/activate.sh       - Activate the venv"
+    echo "  ~/mavlink_test/mavlink_run       - Run Python with venv"
     echo "  ~/mavlink_test/test_connection.py"
     echo ""
-    echo -e "${BLUE}Usage (Option 1 - Use 'mavlink' alias):${NC}"
+    echo -e "${BLUE}Usage (Option 1 - Activate venv directly):${NC}"
     echo ""
-    echo "  source ~/.bashrc   # load alias (only needed once per session)"
-    echo "  mavlink            # activate venv"
+    echo "  source $VENV_DIR/bin/activate"
     echo "  python ~/mavlink_test/test_connection.py --tcp-host <SITL_IP>"
-    echo "  deactivate         # when done"
+    echo "  deactivate  # when done"
     echo ""
     echo -e "${BLUE}Usage (Option 2 - Use wrapper script):${NC}"
     echo ""
