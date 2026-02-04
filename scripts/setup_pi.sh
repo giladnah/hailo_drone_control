@@ -36,6 +36,7 @@ NC='\033[0m' # No Color
 PYTHON_MIN_VERSION="3.8"
 MAVSDK_VERSION=""  # Empty = latest
 UART_BAUD=57600
+VENV_DIR="$HOME/mavlink_venv"
 
 # Flags
 SKIP_UART=false
@@ -150,33 +151,66 @@ install_packages() {
     log_info "System packages installed"
 }
 
-# Install Python packages
+# Create virtual environment
+create_venv() {
+    log_step "Creating Python virtual environment..."
+
+    if [ -d "$VENV_DIR" ]; then
+        log_info "Virtual environment already exists at $VENV_DIR"
+        read -p "Recreate it? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Removing existing virtual environment..."
+            rm -rf "$VENV_DIR"
+        else
+            log_info "Using existing virtual environment"
+            return
+        fi
+    fi
+
+    # Create venv with access to system packages
+    log_info "Creating venv at $VENV_DIR (with system packages)..."
+    python3 -m venv --system-site-packages "$VENV_DIR"
+
+    log_info "Virtual environment created successfully"
+}
+
+# Install Python packages in venv
 install_python_packages() {
-    log_step "Installing Python packages..."
+    log_step "Installing Python packages in virtual environment..."
+
+    # Activate virtual environment
+    source "$VENV_DIR/bin/activate"
 
     # Upgrade pip
-    python3 -m pip install --upgrade pip
+    log_info "Upgrading pip..."
+    pip install --upgrade pip
 
     # Install MAVSDK
     if [ -n "$MAVSDK_VERSION" ]; then
         log_info "Installing MAVSDK version $MAVSDK_VERSION..."
-        python3 -m pip install "mavsdk==$MAVSDK_VERSION"
+        pip install "mavsdk==$MAVSDK_VERSION"
     else
         log_info "Installing latest MAVSDK..."
-        python3 -m pip install mavsdk
+        pip install mavsdk
     fi
 
     # Install pyserial (for serial port utilities)
-    python3 -m pip install pyserial
+    log_info "Installing pyserial..."
+    pip install pyserial
 
     # Verify installation
     log_info "Verifying MAVSDK installation..."
-    if python3 -c "import mavsdk; print(f'MAVSDK version: {mavsdk.__version__}')" 2>/dev/null; then
+    if python -c "import mavsdk; print(f'MAVSDK version: {mavsdk.__version__}')" 2>/dev/null; then
         log_info "MAVSDK installed successfully"
     else
         log_error "MAVSDK installation failed"
+        deactivate
         exit 1
     fi
+
+    # Deactivate venv
+    deactivate
 }
 
 # Configure serial port permissions
@@ -260,6 +294,25 @@ create_test_script() {
 
     # Create directory if it doesn't exist
     mkdir -p ~/mavlink_test
+
+    # Create activation helper script
+    cat > ~/mavlink_test/activate.sh << EOF
+#!/bin/bash
+# Activate the MAVLink virtual environment
+source "$VENV_DIR/bin/activate"
+echo "MAVLink virtual environment activated"
+echo "Run 'deactivate' to exit"
+EOF
+    chmod +x ~/mavlink_test/activate.sh
+
+    # Create wrapper script that auto-activates venv
+    cat > ~/mavlink_test/mavlink_run << EOF
+#!/bin/bash
+# Wrapper script to run Python with MAVLink venv
+source "$VENV_DIR/bin/activate"
+python "\$@"
+EOF
+    chmod +x ~/mavlink_test/mavlink_run
 
     # Create a simple test script
     cat > ~/mavlink_test/test_connection.py << 'EOF'
@@ -433,7 +486,18 @@ EOF
 
     chmod +x ~/mavlink_test/test_connection.py
 
-    log_info "Test script created at ~/mavlink_test/test_connection.py"
+    # Add convenience alias to bashrc
+    BASHRC="$HOME/.bashrc"
+    ALIAS_LINE="alias mavlink='source $VENV_DIR/bin/activate'"
+    if ! grep -q "alias mavlink=" "$BASHRC" 2>/dev/null; then
+        log_info "Adding 'mavlink' alias to $BASHRC..."
+        echo "" >> "$BASHRC"
+        echo "# MAVLink virtual environment alias" >> "$BASHRC"
+        echo "$ALIAS_LINE" >> "$BASHRC"
+    fi
+
+    log_info "Test scripts created at ~/mavlink_test/"
+    log_info "Helper alias 'mavlink' added - run 'source ~/.bashrc' to use it"
 }
 
 # Print summary
@@ -445,10 +509,15 @@ print_summary() {
     echo -e "${GREEN}  Raspberry Pi MAVLink Setup Complete ${NC}"
     echo -e "${GREEN}======================================${NC}"
     echo ""
+    echo "Virtual Environment:"
+    echo "  Location: $VENV_DIR"
+    echo "  Includes: MAVSDK-Python, pyserial"
+    echo "  Has access to system packages"
+    echo ""
     echo "Installed software:"
     echo "  - Python 3 with pip"
-    echo "  - MAVSDK-Python"
-    echo "  - pyserial"
+    echo "  - MAVSDK-Python (in venv)"
+    echo "  - pyserial (in venv)"
     echo ""
 
     if [ "$SKIP_UART" = false ]; then
@@ -468,19 +537,28 @@ print_summary() {
     echo "  RX  ─────────────────────  TX (GPIO 14, Pin 8)"
     echo "  GND ─────────────────────  GND (Pin 6, 9, 14, 20, 25, 30, 34, 39)"
     echo ""
-    echo "Test scripts:"
+    echo "Helper scripts:"
+    echo "  ~/mavlink_test/activate.sh      - Activate the venv"
+    echo "  ~/mavlink_test/mavlink_run      - Run Python with venv"
     echo "  ~/mavlink_test/test_connection.py"
     echo ""
-    echo "Example usage:"
+    echo -e "${BLUE}Usage (Option 1 - Use 'mavlink' alias):${NC}"
+    echo ""
+    echo "  source ~/.bashrc   # load alias (only needed once per session)"
+    echo "  mavlink            # activate venv"
+    echo "  python ~/mavlink_test/test_connection.py --tcp-host <SITL_IP>"
+    echo "  deactivate         # when done"
+    echo ""
+    echo -e "${BLUE}Usage (Option 2 - Use wrapper script):${NC}"
     echo ""
     echo "  # Test TCP connection to SITL (recommended)"
-    echo "  python3 ~/mavlink_test/test_connection.py --tcp-host <SITL_IP>"
+    echo "  ~/mavlink_test/mavlink_run ~/mavlink_test/test_connection.py --tcp-host <SITL_IP>"
     echo ""
     echo "  # Test WiFi (UDP) connection to SITL"
-    echo "  python3 ~/mavlink_test/test_connection.py --wifi-host <SITL_IP>"
+    echo "  ~/mavlink_test/mavlink_run ~/mavlink_test/test_connection.py --wifi-host <SITL_IP>"
     echo ""
     echo "  # Test UART connection to Cube+ Orange"
-    echo "  python3 ~/mavlink_test/test_connection.py --uart"
+    echo "  ~/mavlink_test/mavlink_run ~/mavlink_test/test_connection.py --uart"
     echo ""
     echo "TCP vs WiFi (UDP):"
     echo "  - TCP: Reliable, works through NAT/firewalls (recommended)"
@@ -521,6 +599,7 @@ main() {
     check_python
     update_system
     install_packages
+    create_venv
     install_python_packages
     configure_permissions
     configure_uart

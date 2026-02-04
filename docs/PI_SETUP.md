@@ -150,13 +150,40 @@ sudo apt-get update && sudo apt-get upgrade -y
 # Install Python and dependencies
 sudo apt-get install -y python3 python3-pip python3-venv python3-dev
 
-# Install MAVSDK
-pip3 install mavsdk pyserial
+# Create virtual environment with system packages access
+python3 -m venv --system-site-packages ~/mavlink_venv
+
+# Activate the virtual environment
+source ~/mavlink_venv/bin/activate
+
+# Install MAVSDK and pyserial
+pip install mavsdk pyserial
+
+# Verify installation
+python -c "import mavsdk; print(f'MAVSDK: {mavsdk.__version__}')"
 
 # Add user to dialout group (for serial port access)
 sudo usermod -aG dialout $USER
 
+# Add convenience alias to bashrc (optional)
+echo 'alias mavlink="source ~/mavlink_venv/bin/activate"' >> ~/.bashrc
+
 # Log out and back in for group changes to take effect
+```
+
+**Using the virtual environment:**
+
+```bash
+# Option 1: Use the alias
+source ~/.bashrc
+mavlink  # activates venv
+python your_script.py
+deactivate  # when done
+
+# Option 2: Activate directly
+source ~/mavlink_venv/bin/activate
+python your_script.py
+deactivate
 ```
 
 ## UART Configuration
@@ -308,30 +335,43 @@ python3 examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
 
 ### Test Script
 
-Use the test scripts to verify connectivity:
+First, activate the virtual environment:
+
+```bash
+# Using the alias (after running setup_pi.sh)
+mavlink
+
+# Or activate directly
+source ~/mavlink_venv/bin/activate
+```
+
+Then use the test scripts to verify connectivity:
 
 ```bash
 # TCP connection test (recommended)
-python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
+python examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
 
 # WiFi (UDP) connection test
-python3 examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+python examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
 
 # UART connection test
-python3 examples/pi_connection_test.py -c uart
+python examples/pi_connection_test.py -c uart
 
 # Full diagnostic mode
-python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100 --full-diagnostic
+python examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100 --full-diagnostic
+
+# Deactivate when done
+deactivate
 ```
 
-Or use the simple test script installed by `setup_pi.sh`:
+Or use the wrapper script installed by `setup_pi.sh` (no activation needed):
 
 ```bash
 # TCP connection
-python3 ~/mavlink_test/test_connection.py --tcp-host 192.168.1.100
+~/mavlink_test/mavlink_run ~/mavlink_test/test_connection.py --tcp-host 192.168.1.100
 
 # UART connection
-python3 ~/mavlink_test/test_connection.py --uart
+~/mavlink_test/mavlink_run ~/mavlink_test/test_connection.py --uart
 ```
 
 ### Expected Output
