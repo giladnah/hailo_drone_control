@@ -100,6 +100,9 @@ RUN pip3 install --no-cache-dir \
 # Install MAVSDK-Python for MAVLink communication
 RUN pip3 install --no-cache-dir mavsdk
 
+# Install testing dependencies
+RUN pip3 install --no-cache-dir pytest pytest-asyncio pytest-timeout
+
 # Install meson for mavlink-router build
 RUN pip3 install --no-cache-dir meson
 

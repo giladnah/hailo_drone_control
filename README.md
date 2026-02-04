@@ -97,18 +97,18 @@ The main control script for managing the environment:
 ./scripts/px4ctl.sh <command> [options]
 ```
 
-| Command | Description |
-|---------|-------------|
-| `start [profile]` | Start environment (default: full) |
-| `stop` | Stop all services |
-| `restart [profile]` | Restart the environment |
-| `status` | Show service status |
-| `logs [service]` | Tail logs (all or specific) |
-| `shell` | Open development shell |
-| `run <script>` | Run Python script in container |
-| `test` | Run integration tests |
-| `build` | Rebuild Docker images |
-| `clean` | Remove containers and volumes |
+| Command             | Description                       |
+| ------------------- | --------------------------------- |
+| `start [profile]`   | Start environment (default: full) |
+| `stop`              | Stop all services                 |
+| `restart [profile]` | Restart the environment           |
+| `status`            | Show service status               |
+| `logs [service]`    | Tail logs (all or specific)       |
+| `shell`             | Open development shell            |
+| `run <script>`      | Run Python script in container    |
+| `test`              | Run integration tests             |
+| `build`             | Rebuild Docker images             |
+| `clean`             | Remove containers and volumes     |
 
 ### Examples
 
@@ -128,13 +128,13 @@ The main control script for managing the environment:
 
 ## Profiles
 
-| Profile | Services | Use Case |
-|---------|----------|----------|
-| `full` | SITL + Gazebo + QGC + Control | Development with GUI |
-| `headless` | SITL + Control | CI/CD, automated testing |
-| `sitl` | SITL + Gazebo only | Simulation only |
-| `dev` | Development shell | Interactive development |
-| `hitl` | Hardware-in-the-loop | Physical Cube+ Orange |
+| Profile    | Services                      | Use Case                 |
+| ---------- | ----------------------------- | ------------------------ |
+| `full`     | SITL + Gazebo + QGC + Control | Development with GUI     |
+| `headless` | SITL + Control                | CI/CD, automated testing |
+| `sitl`     | SITL + Gazebo only            | Simulation only          |
+| `dev`      | Development shell             | Interactive development  |
+| `hitl`     | Hardware-in-the-loop          | Physical Cube+ Orange    |
 
 ## Example: Hover & Rotate
 
@@ -190,14 +190,14 @@ hailo_drone_control/
 
 Edit `.env` to customize:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VEHICLE_ID` | `1` | Vehicle identifier |
-| `AIRFRAME` | `x500` | Airframe model |
-| `MAV_SYS_ID` | `1` | MAVLink system ID |
-| `QGC_PORT` | `14550` | QGC MAVLink port |
-| `MAVSDK_PORT` | `14540` | MAVSDK API port |
-| `DISPLAY` | `:0` | X11 display |
+| Variable      | Default | Description        |
+| ------------- | ------- | ------------------ |
+| `VEHICLE_ID`  | `1`     | Vehicle identifier |
+| `AIRFRAME`    | `x500`  | Airframe model     |
+| `MAV_SYS_ID`  | `1`     | MAVLink system ID  |
+| `QGC_PORT`    | `14550` | QGC MAVLink port   |
+| `MAVSDK_PORT` | `14540` | MAVSDK API port    |
+| `DISPLAY`     | `:0`    | X11 display        |
 
 ### Vehicle Configuration
 
@@ -227,12 +227,12 @@ python3 tests/test_environment.py
 
 ## Network Ports
 
-| Port | Protocol | Service |
-|------|----------|---------|
-| 14580 | UDP | PX4 SITL MAVLink |
-| 14550 | UDP | QGroundControl |
-| 14540 | UDP | MAVSDK / Offboard API |
-| 5760 | TCP | Mission Planner |
+| Port  | Protocol | Service               |
+| ----- | -------- | --------------------- |
+| 14580 | UDP      | PX4 SITL MAVLink      |
+| 14550 | UDP      | QGroundControl        |
+| 14540 | UDP      | MAVSDK / Offboard API |
+| 5760  | TCP      | Mission Planner       |
 
 ## Troubleshooting
 
@@ -311,6 +311,78 @@ ls -la /dev/cube_orange
 ./scripts/px4ctl.sh start hitl
 ```
 
+## Raspberry Pi Connection
+
+Connect a Raspberry Pi to control the drone via UART (production) or WiFi (testing with SITL).
+
+### Quick Start (WiFi - Testing)
+
+1. **Start SITL on host:**
+   ```bash
+   ./scripts/px4ctl.sh start
+   ```
+
+2. **Get host IP address:**
+   ```bash
+   hostname -I  # Note the IP (e.g., 192.168.1.100)
+   ```
+
+3. **On Raspberry Pi:**
+   ```bash
+   # Install MAVSDK
+   pip3 install mavsdk
+
+   # Clone repository
+   git clone <repository-url>
+   cd hailo_drone_control
+
+   # Test connection
+   python3 examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+
+   # Run a flight example
+   python3 examples/simple_takeoff_land.py -c wifi --wifi-host 192.168.1.100 --altitude 5
+   ```
+
+### Quick Start (UART - Production)
+
+1. **Wire TELEM2 to Raspberry Pi GPIO:**
+   ```
+   Cube+ Orange TELEM2     Raspberry Pi
+   TX  ───────────────────  RX (GPIO 15, Pin 10)
+   RX  ───────────────────  TX (GPIO 14, Pin 8)
+   GND ───────────────────  GND (Pin 6)
+   ```
+
+2. **Setup Raspberry Pi:**
+   ```bash
+   # Run setup script (installs MAVSDK, enables UART)
+   ./scripts/setup_pi.sh
+   ```
+
+3. **Test connection:**
+   ```bash
+   python3 examples/pi_connection_test.py -c uart
+   ```
+
+### Connection Types
+
+All example scripts support both connection modes:
+
+```bash
+# WiFi mode (default - SITL testing)
+python3 examples/hover_rotate.py -c wifi --wifi-host 192.168.1.100
+
+# UART mode (production - Cube+ Orange)
+python3 examples/hover_rotate.py -c uart --uart-device /dev/ttyAMA0
+```
+
+| Script | Description |
+|--------|-------------|
+| `pi_connection_test.py` | Comprehensive connection diagnostics |
+| `pi_simple_control.py` | Minimal control example |
+
+See [docs/PI_SETUP.md](docs/PI_SETUP.md) for complete setup instructions.
+
 ## Development
 
 ### Interactive Shell
@@ -338,13 +410,61 @@ Place scripts in `examples/` and run with:
 ./scripts/px4ctl.sh run examples/your_script.py
 ```
 
+## Example Scripts
+
+The `examples/` directory contains ready-to-use MAVSDK-Python scripts:
+
+| Script                   | Description                          |
+| ------------------------ | ------------------------------------ |
+| `simple_takeoff_land.py` | Basic takeoff and land sequence      |
+| `hover_rotate.py`        | Takeoff, rotate 360°, and land       |
+| `mission_upload.py`      | Create and execute waypoint missions |
+| `offboard_velocity.py`   | Velocity-based offboard control      |
+| `telemetry_monitor.py`   | Real-time telemetry monitoring       |
+| `geofence_setup.py`      | Configure geofence boundaries        |
+| `pi_connection_test.py`  | Raspberry Pi connection diagnostics  |
+| `pi_simple_control.py`   | Minimal control example for Pi       |
+
+**Running Examples**:
+
+```bash
+# Start SITL first
+./scripts/px4ctl.sh start
+
+# Run an example
+./scripts/px4ctl.sh run examples/simple_takeoff_land.py --altitude 10
+
+# Monitor telemetry
+./scripts/px4ctl.sh run examples/telemetry_monitor.py --duration 60
+```
+
+## Documentation
+
+- [Raspberry Pi Setup Guide](docs/PI_SETUP.md) - Complete guide for Pi connection via UART or WiFi
+- [Open Source Solutions Reference](docs/OPEN_SOURCE_SOLUTIONS.md) - Catalog of reusable open-source components
+- [Research Notes](RESEARCH.md) - Technical architecture and design decisions
+
 ## Resources
 
-- [PX4 Documentation](https://docs.px4.io/)
-- [Cube+ Orange Manual](https://docs.cubepilot.org/)
+### Official Documentation
+
+- [PX4 User Guide](https://docs.px4.io/)
+- [PX4 Parameter Reference](https://docs.px4.io/main/en/advanced_config/parameter_reference.html)
 - [MAVSDK Python Guide](https://mavsdk.mavlink.io/main/en/python/)
-- [QGroundControl](https://docs.qgroundcontrol.com/)
+- [MAVLink Protocol](https://mavlink.io/)
 - [Gazebo Garden](https://gazebosim.org/docs/garden/)
+- [QGroundControl](https://docs.qgroundcontrol.com/)
+
+### Hardware Documentation
+
+- [Cube+ Orange Manual](https://docs.cubepilot.org/)
+- [PX4 Airframe Reference](https://docs.px4.io/main/en/airframes/airframe_reference.html)
+
+### Community Resources
+
+- [PX4 Discuss Forum](https://discuss.px4.io/)
+- [PX4 Discord](https://discord.gg/dronecode)
+- [MAVSDK-Python Examples](https://github.com/mavlink/MAVSDK-Python/tree/main/examples)
 
 ## License
 

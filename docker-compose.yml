@@ -12,6 +12,11 @@
 #   ./scripts/px4ctl.sh start     # Recommended way to start
 #   docker compose --profile full up
 #   docker compose --profile headless up -d
+#
+# Raspberry Pi Connection (WiFi):
+#   UDP port 14540 is exposed to the host network for external MAVLink clients.
+#   From Raspberry Pi: python3 example.py -c wifi --wifi-host <HOST_IP>
+#   See docs/PI_SETUP.md for complete setup instructions.
 
 x-common-env: &common-env
   VEHICLE_ID: ${VEHICLE_ID:-1}
@@ -53,6 +58,9 @@ services:
       SIM_MODE: sitl
       PX4_HOME: /workspace/PX4-Autopilot
       PX4_GZ_STANDALONE: "1"
+      # Forward MAVLink to Docker network IPs (comma-separated for multiple)
+      MAVLINK_FORWARD_QGC: "172.28.0.20:14550"
+      MAVLINK_FORWARD_SDK: "172.28.0.30:14540,172.28.0.100:14540"
     volumes:
       - px4-source:/workspace/PX4-Autopilot
       - ./config:/workspace/config:ro
@@ -64,42 +72,20 @@ services:
     networks:
       px4-net:
         ipv4_address: 172.28.0.10
-    # Ports are internal to px4-net, no host exposure needed
+    # Expose MAVLink ports for external connections (e.g., Raspberry Pi via WiFi)
+    ports:
+      - "${PI_MAVLINK_PORT:-14540}:14540/udp"    # MAVSDK API for external clients
+      - "${PI_QGC_PORT:-14551}:14550/udp"        # QGC for external GCS
     devices:
       - /dev/dri:/dev/dri
     stdin_open: true
     tty: true
 
   # ============================================
-  # MAVLink Router - Central telemetry hub
+  # NOTE: MAVLink routing is handled internally by px4-sitl
+  # The px4-sitl container runs mavlink-routerd which forwards
+  # telemetry to QGC, control, and test-runner containers.
   # ============================================
-  mavlink-router:
-    build:
-      context: ./docker
-      dockerfile: Dockerfile
-    image: px4-cube-orange:latest
-    container_name: mavlink-router
-    hostname: mavlink-router
-    profiles:
-      - full
-      - headless
-      - router
-    environment:
-      SIM_MODE: dev
-    volumes:
-      - ./config:/workspace/config:ro
-    command: >
-      mavlink-routerd
-      -e 172.28.0.10:14580
-      -e 172.28.0.20:14550
-      -e 172.28.0.30:14540
-      0.0.0.0:14580
-    networks:
-      px4-net:
-        ipv4_address: 172.28.0.11
-    depends_on:
-      - px4-sitl
-    restart: unless-stopped
 
   # ============================================
   # QGroundControl - Ground Control Station
@@ -127,7 +113,7 @@ services:
       px4-net:
         ipv4_address: 172.28.0.20
     depends_on:
-      - mavlink-router
+      - px4-sitl
     stdin_open: true
     tty: true
 
@@ -148,7 +134,8 @@ services:
     environment:
       <<: *common-env
       SIM_MODE: dev
-      MAVLINK_HOST: 172.28.0.11
+      # px4-sitl forwards data to us, so we listen on our own IP
+      MAVLINK_HOST: "0.0.0.0"
       MAVLINK_PORT: "14540"
     volumes:
       - ./examples:/workspace/examples:ro
@@ -159,7 +146,7 @@ services:
       px4-net:
         ipv4_address: 172.28.0.30
     depends_on:
-      - mavlink-router
+      - px4-sitl
     working_dir: /workspace
     command: ["tail", "-f", "/dev/null"]
     stdin_open: true
@@ -241,20 +228,29 @@ services:
     hostname: px4-test-runner
     profiles:
       - test
+      - full
+      - headless
     environment:
       <<: *common-env
       SIM_MODE: dev
-      MAVLINK_HOST: 172.28.0.11
+      # px4-sitl forwards data to us, so we listen on our own IP
+      MAVLINK_HOST: "0.0.0.0"
       MAVLINK_PORT: "14540"
+      PYTEST_TIMEOUT: "120"
     volumes:
       - ./tests:/workspace/tests:ro
       - ./scripts:/workspace/scripts:ro
+      - ./examples:/workspace/examples:ro
       - ./logs:/workspace/logs
     networks:
       px4-net:
         ipv4_address: 172.28.0.100
+    depends_on:
+      - px4-sitl
     working_dir: /workspace
-    command: ["python3", "-m", "pytest", "tests/", "-v", "--tb=short"]
+    command: ["tail", "-f", "/dev/null"]
+    stdin_open: true
+    tty: true
 
 # Named volumes for persistent data
 volumes:

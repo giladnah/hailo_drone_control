@@ -60,12 +60,27 @@ start_mavlink_router() {
     else
         log_warn "MAVLink-Router config not found, using default routing"
 
+        # Build endpoint list from MAVLINK_FORWARD_* env vars
+        local endpoints=""
+
+        # QGC endpoint
+        local qgc="${MAVLINK_FORWARD_QGC:-127.0.0.1:$QGC_PORT}"
+        endpoints="$endpoints -e $qgc"
+
+        # SDK endpoints (can be comma-separated for multiple)
+        local sdk_list="${MAVLINK_FORWARD_SDK:-127.0.0.1:$MAVSDK_PORT}"
+        for sdk in $(echo "$sdk_list" | tr ',' ' '); do
+            endpoints="$endpoints -e $sdk"
+        done
+
+        log_info "MAVLink Router endpoints: $endpoints"
+
         if [ "$SIM_MODE" = "hitl" ]; then
             # HITL: route from serial device
-            mavlink-routerd -e "127.0.0.1:$QGC_PORT" -e "127.0.0.1:$MAVSDK_PORT" "$SERIAL_DEVICE:$SERIAL_BAUD" &
+            mavlink-routerd $endpoints "$SERIAL_DEVICE:$SERIAL_BAUD" &
         else
             # SITL: route from UDP
-            mavlink-routerd -e "127.0.0.1:$QGC_PORT" -e "127.0.0.1:$MAVSDK_PORT" "0.0.0.0:$SITL_PORT" &
+            mavlink-routerd $endpoints "0.0.0.0:$SITL_PORT" &
         fi
     fi
 
@@ -93,7 +108,11 @@ start_sitl() {
     fi
 
     # Start SITL with Gazebo
+    # PX4_GZ_STANDALONE=1 means external mavlink router handles routing
     log_info "Launching PX4 SITL with Gazebo..."
+    if [ -n "$PX4_GZ_STANDALONE" ] && [ "$PX4_GZ_STANDALONE" = "1" ]; then
+        log_info "  Standalone mode - external MAVLink router expected"
+    fi
     PX4_SYS_AUTOSTART=4001 PX4_GZ_MODEL=$AIRFRAME make px4_sitl gz_$AIRFRAME
 }
 
@@ -160,7 +179,12 @@ main() {
 
     case "$SIM_MODE" in
         sitl)
-            start_mavlink_router
+            # Only start internal mavlink-router if EXTERNAL_MAVLINK_ROUTER is not set
+            if [ -z "$EXTERNAL_MAVLINK_ROUTER" ]; then
+                start_mavlink_router
+            else
+                log_info "Using external MAVLink router"
+            fi
             start_sitl
             ;;
         hitl)

@@ -3,10 +3,23 @@
 #
 # Format: PARAM_NAME VALUE
 # Documentation: https://docs.px4.io/main/en/advanced_config/parameter_reference.html
+#
+# VALIDATION NOTES:
+# - Validated against official PX4 v1.14+ parameter reference
+# - SYS_AUTOSTART 4001 corresponds to Generic x500 Quadcopter
+# - Values are tuned for simulation; adjust for real hardware
+#
+# Official References:
+# - Parameter Reference: https://docs.px4.io/main/en/advanced_config/parameter_reference.html
+# - x500 Airframe: https://docs.px4.io/main/en/airframes/airframe_reference.html#copter-quadrotor-x
+# - PX4 GitHub: https://github.com/PX4/PX4-Autopilot
 
 # ==============================================
 # System Identification
 # ==============================================
+# MAV_SYS_ID: System ID (1-255), unique per vehicle on network
+# MAV_COMP_ID: Component ID (1 = autopilot)
+# MAV_TYPE: 2 = Quadrotor (per MAVLink spec)
 MAV_SYS_ID 1
 MAV_COMP_ID 1
 MAV_TYPE 2
@@ -14,66 +27,104 @@ MAV_TYPE 2
 # ==============================================
 # Airframe Configuration
 # ==============================================
-# x500 Quadcopter airframe
+# SYS_AUTOSTART: Airframe autostart ID
+# 4001 = Generic x500 Quadcopter (official PX4 airframe)
+# See: ROMFS/px4fmu_common/init.d/airframes/4001_x500
 SYS_AUTOSTART 4001
 
 # ==============================================
 # Multicopter Position Control
 # ==============================================
-# Horizontal velocity limits
+# Reference: https://docs.px4.io/main/en/advanced_config/parameter_reference.html#multicopter-position-control
+
+# Horizontal velocity limits (m/s)
+# MPC_XY_VEL_MAX: Max horizontal velocity (default: 12.0)
+# MPC_XY_CRUISE: Cruise speed for missions (default: 5.0)
 MPC_XY_VEL_MAX 12.0
 MPC_XY_CRUISE 5.0
 
-# Vertical velocity limits
+# Vertical velocity limits (m/s)
+# MPC_Z_VEL_MAX_UP: Max ascent rate (default: 3.0)
+# MPC_Z_VEL_MAX_DN: Max descent rate (default: 1.5)
 MPC_Z_VEL_MAX_UP 3.0
 MPC_Z_VEL_MAX_DN 1.5
 
-# Acceleration limits
+# Acceleration limits (m/s²)
+# MPC_ACC_HOR_MAX: Max horizontal acceleration (default: 5.0)
+# MPC_ACC_UP_MAX: Max upward acceleration (default: 4.0)
+# MPC_ACC_DOWN_MAX: Max downward acceleration (default: 3.0)
 MPC_ACC_HOR_MAX 5.0
 MPC_ACC_UP_MAX 4.0
 MPC_ACC_DOWN_MAX 3.0
 
-# Jerk limits
+# Jerk limits (m/s³)
+# MPC_JERK_AUTO: Auto mode jerk limit (default: 4.0)
+# MPC_JERK_MAX: Maximum jerk limit (default: 8.0)
 MPC_JERK_AUTO 4.0
 MPC_JERK_MAX 8.0
 
 # ==============================================
 # Multicopter Attitude Control
 # ==============================================
-# Roll/Pitch rate limits (deg/s)
+# Reference: https://docs.px4.io/main/en/advanced_config/parameter_reference.html#multicopter-attitude-control
+# Note: These are default PX4 values, suitable for x500 simulation
+
+# Roll/Pitch/Yaw rate limits (deg/s)
+# MC_ROLLRATE_MAX: Max roll rate (default: 220.0)
+# MC_PITCHRATE_MAX: Max pitch rate (default: 220.0)
+# MC_YAWRATE_MAX: Max yaw rate (default: 200.0)
 MC_ROLLRATE_MAX 220.0
 MC_PITCHRATE_MAX 220.0
 MC_YAWRATE_MAX 200.0
 
-# Attitude P gains
+# Attitude P gains (proportional)
+# MC_ROLL_P: Roll P gain (default: 6.5)
+# MC_PITCH_P: Pitch P gain (default: 6.5)
+# MC_YAW_P: Yaw P gain (default: 2.8)
 MC_ROLL_P 6.5
 MC_PITCH_P 6.5
 MC_YAW_P 2.8
 
-# Rate P gains
+# Rate P gains (proportional)
+# MC_ROLLRATE_P: Roll rate P gain (default: 0.15)
+# MC_PITCHRATE_P: Pitch rate P gain (default: 0.15)
+# MC_YAWRATE_P: Yaw rate P gain (default: 0.2)
 MC_ROLLRATE_P 0.15
 MC_PITCHRATE_P 0.15
 MC_YAWRATE_P 0.2
 
-# Rate I gains
+# Rate I gains (integral)
+# MC_ROLLRATE_I: Roll rate I gain (default: 0.2)
+# MC_PITCHRATE_I: Pitch rate I gain (default: 0.2)
+# MC_YAWRATE_I: Yaw rate I gain (default: 0.1)
 MC_ROLLRATE_I 0.2
 MC_PITCHRATE_I 0.2
 MC_YAWRATE_I 0.1
 
-# Rate D gains
+# Rate D gains (derivative)
+# MC_ROLLRATE_D: Roll rate D gain (default: 0.003)
+# MC_PITCHRATE_D: Pitch rate D gain (default: 0.003)
 MC_ROLLRATE_D 0.003
 MC_PITCHRATE_D 0.003
 
 # ==============================================
-# Position Estimator
+# Position Estimator (EKF2)
 # ==============================================
+# Reference: https://docs.px4.io/main/en/advanced_config/parameter_reference.html#ekf2
+# EKF2_AID_MASK: Sensor fusion bitmask (1 = GPS)
+# EKF2_HGT_MODE: Height mode (0 = barometer)
+# EKF2_MAG_TYPE: Magnetometer type (0 = automatic)
 EKF2_AID_MASK 1
 EKF2_HGT_MODE 0
 EKF2_MAG_TYPE 0
 
 # ==============================================
-# Return to Launch
+# Return to Launch (RTL)
 # ==============================================
+# Reference: https://docs.px4.io/main/en/advanced_config/parameter_reference.html#return-mode
+# RTL_RETURN_ALT: Return altitude (m) (default: 60.0, reduced for simulation)
+# RTL_DESCEND_ALT: Descend altitude before landing (m)
+# RTL_LAND_DELAY: Delay before landing (s) (0 = land immediately)
 RTL_RETURN_ALT 30.0
 RTL_DESCEND_ALT 10.0
 RTL_LAND_DELAY 0.0
@@ -81,6 +132,10 @@ RTL_LAND_DELAY 0.0
 # ==============================================
 # Geofence
 # ==============================================
+# Reference: https://docs.px4.io/main/en/advanced_config/parameter_reference.html#geofence
+# GF_ACTION: Action on breach (1 = warning)
+# GF_MAX_HOR_DIST: Max horizontal distance from home (m)
+# GF_MAX_VER_DIST: Max vertical distance (m)
 GF_ACTION 1
 GF_MAX_HOR_DIST 500.0
 GF_MAX_VER_DIST 120.0
@@ -88,6 +143,11 @@ GF_MAX_VER_DIST 120.0
 # ==============================================
 # Battery Failsafe
 # ==============================================
+# Reference: https://docs.px4.io/main/en/advanced_config/parameter_reference.html#battery
+# BAT_LOW_THR: Low battery threshold (0.25 = 25%)
+# BAT_CRIT_THR: Critical battery threshold (0.10 = 10%)
+# BAT_EMERGEN_THR: Emergency threshold (0.05 = 5%)
+# COM_LOW_BAT_ACT: Low battery action (2 = RTL)
 BAT_LOW_THR 0.25
 BAT_CRIT_THR 0.10
 BAT_EMERGEN_THR 0.05
@@ -96,15 +156,21 @@ COM_LOW_BAT_ACT 2
 # ==============================================
 # Commander Settings
 # ==============================================
+# Reference: https://docs.px4.io/main/en/advanced_config/parameter_reference.html#commander
+# COM_ARM_WO_GPS: Allow arming without GPS (1 = yes, for SITL)
+# COM_RC_IN_MODE: RC input mode (1 = joystick/offboard)
+# COM_DISARM_LAND: Auto-disarm after landing (s)
+# COM_DISARM_PRFLT: Pre-flight disarm timeout (s)
 COM_ARM_WO_GPS 1
 COM_RC_IN_MODE 1
 COM_DISARM_LAND 2.0
 COM_DISARM_PRFLT 10.0
 
 # ==============================================
-# Simulation Settings
+# Simulation Settings (SITL Only)
 # ==============================================
-# These are specific to SITL
+# These parameters are specific to Software-In-The-Loop simulation
+# Set to 0 for ideal conditions; increase for realistic noise
 SIM_GPS_NOISE_X 0.0
 SIM_GPS_NOISE_Y 0.0
 SIM_GPS_NOISE_Z 0.0

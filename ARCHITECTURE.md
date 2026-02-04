@@ -39,7 +39,7 @@ The development environment runs entirely in Docker containers, providing a repr
 
 ### 1. PX4 SITL Container (`px4-sitl`)
 
-**Image:** `px4-cube-orange:latest`  
+**Image:** `px4-cube-orange:latest`
 **IP Address:** `172.28.0.10`
 
 The core simulation container running:
@@ -54,7 +54,7 @@ Key features:
 
 ### 2. MAVLink Router Container (`mavlink-router`)
 
-**Image:** `px4-cube-orange:latest`  
+**Image:** `px4-cube-orange:latest`
 **IP Address:** `172.28.0.11`
 
 Central telemetry routing hub that:
@@ -65,7 +65,7 @@ Central telemetry routing hub that:
 
 ### 3. QGroundControl Container (`qgroundcontrol`)
 
-**Image:** `qgroundcontrol:latest`  
+**Image:** `qgroundcontrol:latest`
 **IP Address:** `172.28.0.20`
 
 Ground control station providing:
@@ -78,7 +78,7 @@ Uses X11 forwarding for GUI display on host.
 
 ### 4. Control Container (`control`)
 
-**Image:** `px4-cube-orange:latest`  
+**Image:** `px4-cube-orange:latest`
 **IP Address:** `172.28.0.30`
 
 Python application environment for:
@@ -93,14 +93,14 @@ Python application environment for:
 
 All containers communicate over a dedicated bridge network:
 
-| Container | IP Address | Ports |
-|-----------|------------|-------|
-| px4-sitl | 172.28.0.10 | 14580/udp (MAVLink out) |
-| mavlink-router | 172.28.0.11 | 14580/udp (in), routes to 14550, 14540 |
-| qgroundcontrol | 172.28.0.20 | 14550/udp (MAVLink in) |
-| control | 172.28.0.30 | 14540/udp (MAVLink in) |
-| dev | 172.28.0.50 | (interactive) |
-| test-runner | 172.28.0.100 | (tests) |
+| Container      | IP Address   | Ports                                  |
+| -------------- | ------------ | -------------------------------------- |
+| px4-sitl       | 172.28.0.10  | 14580/udp (MAVLink out)                |
+| mavlink-router | 172.28.0.11  | 14580/udp (in), routes to 14550, 14540 |
+| qgroundcontrol | 172.28.0.20  | 14550/udp (MAVLink in)                 |
+| control        | 172.28.0.30  | 14540/udp (MAVLink in)                 |
+| dev            | 172.28.0.50  | (interactive)                          |
+| test-runner    | 172.28.0.100 | (tests)                                |
 
 ### MAVLink Message Flow
 
@@ -134,33 +134,33 @@ PX4 SITL ──UDP:14580──► MAVLink Router ──UDP:14550──► QGroun
 
 The environment supports multiple operational profiles:
 
-| Profile | Services Started | Use Case |
-|---------|-----------------|----------|
-| `full` | px4-sitl, mavlink-router, qgroundcontrol, control | Complete development with GUI |
-| `headless` | px4-sitl, mavlink-router, control | CI/CD, automated testing |
-| `sitl` | px4-sitl | Simulation only |
-| `dev` | dev | Interactive development shell |
-| `hitl` | hitl | Hardware-in-the-loop with real Cube+ Orange |
-| `test` | test-runner | Run integration tests |
+| Profile    | Services Started                                  | Use Case                                    |
+| ---------- | ------------------------------------------------- | ------------------------------------------- |
+| `full`     | px4-sitl, mavlink-router, qgroundcontrol, control | Complete development with GUI               |
+| `headless` | px4-sitl, mavlink-router, control                 | CI/CD, automated testing                    |
+| `sitl`     | px4-sitl                                          | Simulation only                             |
+| `dev`      | dev                                               | Interactive development shell               |
+| `hitl`     | hitl                                              | Hardware-in-the-loop with real Cube+ Orange |
+| `test`     | test-runner                                       | Run integration tests                       |
 
 ## Volume Management
 
 ### Persistent Volumes
 
-| Volume | Mount Point | Purpose |
-|--------|-------------|---------|
-| `px4-autopilot-source` | `/workspace/PX4-Autopilot` | PX4 source code (survives rebuilds) |
-| `qgc-config` | `/home/qgc/.config/QGroundControl.org` | QGC settings |
+| Volume                 | Mount Point                            | Purpose                             |
+| ---------------------- | -------------------------------------- | ----------------------------------- |
+| `px4-autopilot-source` | `/workspace/PX4-Autopilot`             | PX4 source code (survives rebuilds) |
+| `qgc-config`           | `/home/qgc/.config/QGroundControl.org` | QGC settings                        |
 
 ### Bind Mounts
 
-| Host Path | Container Path | Purpose |
-|-----------|----------------|---------|
-| `./config` | `/workspace/config` | Configuration files |
-| `./logs` | `/workspace/logs` | Log files |
-| `./examples` | `/workspace/examples` | Flight scripts |
-| `./scripts` | `/workspace/scripts` | Utility scripts |
-| `/tmp/.X11-unix` | `/tmp/.X11-unix` | X11 display socket |
+| Host Path        | Container Path        | Purpose             |
+| ---------------- | --------------------- | ------------------- |
+| `./config`       | `/workspace/config`   | Configuration files |
+| `./logs`         | `/workspace/logs`     | Log files           |
+| `./examples`     | `/workspace/examples` | Flight scripts      |
+| `./scripts`      | `/workspace/scripts`  | Utility scripts     |
+| `/tmp/.X11-unix` | `/tmp/.X11-unix`      | X11 display socket  |
 
 ## X11 Display Forwarding
 

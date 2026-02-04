@@ -26,9 +26,17 @@ RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libgl1-mesa-dri \
     libegl1-mesa \
+    # GStreamer for video
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-gl \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
     # Audio (QGC uses speech)
     libpulse0 \
+    libpulse-mainloop-glib0 \
     libasound2 \
+    pulseaudio \
     # Fonts
     fonts-dejavu \
     # Networking
@@ -51,6 +59,8 @@ RUN wget -q "https://github.com/mavlink/qgroundcontrol/releases/download/v4.4.3/
 # Extract AppImage (avoids FUSE requirement in container)
 RUN /opt/QGroundControl.AppImage --appimage-extract \
     && mv squashfs-root /opt/QGroundControl \
+    && chmod +x /opt/QGroundControl/AppRun \
+    && chmod -R a+rx /opt/QGroundControl \
     && rm QGroundControl.AppImage
 
 # Create non-root user
