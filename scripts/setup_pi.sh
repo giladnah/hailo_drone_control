@@ -83,7 +83,7 @@ log_step() {
 # Check if running on Raspberry Pi
 check_raspberry_pi() {
     log_step "Checking system..."
-    
+
     if [ -f /proc/device-tree/model ]; then
         MODEL=$(cat /proc/device-tree/model)
         log_info "Detected: $MODEL"
@@ -101,11 +101,11 @@ check_raspberry_pi() {
 # Check Python version
 check_python() {
     log_step "Checking Python..."
-    
+
     if command -v python3 &> /dev/null; then
         PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
         log_info "Python version: $PYTHON_VERSION"
-        
+
         # Compare versions
         if python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)"; then
             log_info "Python version OK (>= $PYTHON_MIN_VERSION)"
@@ -126,7 +126,7 @@ check_python() {
 # Update system packages
 update_system() {
     log_step "Updating system packages..."
-    
+
     sudo apt-get update
     sudo apt-get upgrade -y
 }
@@ -134,7 +134,7 @@ update_system() {
 # Install required packages
 install_packages() {
     log_step "Installing required packages..."
-    
+
     # System packages
     PACKAGES=(
         python3-pip
@@ -144,19 +144,19 @@ install_packages() {
         libssl-dev
         git
     )
-    
+
     sudo apt-get install -y "${PACKAGES[@]}"
-    
+
     log_info "System packages installed"
 }
 
 # Install Python packages
 install_python_packages() {
     log_step "Installing Python packages..."
-    
+
     # Upgrade pip
     python3 -m pip install --upgrade pip
-    
+
     # Install MAVSDK
     if [ -n "$MAVSDK_VERSION" ]; then
         log_info "Installing MAVSDK version $MAVSDK_VERSION..."
@@ -165,10 +165,10 @@ install_python_packages() {
         log_info "Installing latest MAVSDK..."
         python3 -m pip install mavsdk
     fi
-    
+
     # Install pyserial (for serial port utilities)
     python3 -m pip install pyserial
-    
+
     # Verify installation
     log_info "Verifying MAVSDK installation..."
     if python3 -c "import mavsdk; print(f'MAVSDK version: {mavsdk.__version__}')" 2>/dev/null; then
@@ -182,7 +182,7 @@ install_python_packages() {
 # Configure serial port permissions
 configure_permissions() {
     log_step "Configuring serial port permissions..."
-    
+
     # Add user to dialout group
     if groups "$USER" | grep -q dialout; then
         log_info "User already in dialout group"
@@ -199,24 +199,24 @@ configure_uart() {
         log_info "Skipping UART configuration (--skip-uart)"
         return
     fi
-    
+
     log_step "Configuring UART..."
-    
+
     # Check if running on Raspberry Pi with raspi-config
     if ! command -v raspi-config &> /dev/null; then
         log_warn "raspi-config not found - skipping UART configuration"
         log_warn "Please configure UART manually if needed"
         return
     fi
-    
+
     # Enable UART in config.txt
     CONFIG_FILE="/boot/config.txt"
     if [ -f "/boot/firmware/config.txt" ]; then
         CONFIG_FILE="/boot/firmware/config.txt"
     fi
-    
+
     log_info "Configuring $CONFIG_FILE..."
-    
+
     # Enable UART
     if grep -q "^enable_uart=1" "$CONFIG_FILE"; then
         log_info "UART already enabled"
@@ -224,7 +224,7 @@ configure_uart() {
         log_info "Enabling UART..."
         echo "enable_uart=1" | sudo tee -a "$CONFIG_FILE" > /dev/null
     fi
-    
+
     # Disable Bluetooth to free up primary UART (Pi 3/4)
     # This makes /dev/ttyAMA0 available for our use
     if grep -q "^dtoverlay=disable-bt" "$CONFIG_FILE" || grep -q "^dtoverlay=miniuart-bt" "$CONFIG_FILE"; then
@@ -233,23 +233,23 @@ configure_uart() {
         log_info "Configuring Bluetooth to use mini-UART (freeing /dev/ttyAMA0)..."
         echo "dtoverlay=miniuart-bt" | sudo tee -a "$CONFIG_FILE" > /dev/null
     fi
-    
+
     # Disable serial console
     log_info "Disabling serial console (to free UART for MAVLink)..."
     sudo raspi-config nonint do_serial 1  # Disable shell over serial
-    
+
     # Check cmdline.txt
     CMDLINE_FILE="/boot/cmdline.txt"
     if [ -f "/boot/firmware/cmdline.txt" ]; then
         CMDLINE_FILE="/boot/firmware/cmdline.txt"
     fi
-    
+
     if grep -q "console=serial0" "$CMDLINE_FILE" || grep -q "console=ttyAMA0" "$CMDLINE_FILE"; then
         log_info "Removing serial console from cmdline.txt..."
         sudo sed -i 's/console=serial0,[0-9]* //g' "$CMDLINE_FILE"
         sudo sed -i 's/console=ttyAMA0,[0-9]* //g' "$CMDLINE_FILE"
     fi
-    
+
     log_info "UART configuration complete"
     log_warn "A reboot is required for UART changes to take effect"
 }
@@ -257,20 +257,23 @@ configure_uart() {
 # Create test script
 create_test_script() {
     log_step "Creating test scripts..."
-    
+
     # Create directory if it doesn't exist
     mkdir -p ~/mavlink_test
-    
+
     # Create a simple test script
     cat > ~/mavlink_test/test_connection.py << 'EOF'
 #!/usr/bin/env python3
 """
 test_connection.py - Simple MAVLink connection test
 
-Tests connection to autopilot via UART or WiFi and displays basic telemetry.
+Tests connection to autopilot via TCP, WiFi (UDP), or UART.
 
 Usage:
-    # WiFi mode
+    # TCP mode (recommended)
+    python3 test_connection.py --tcp-host 192.168.1.100
+
+    # WiFi (UDP) mode
     python3 test_connection.py --wifi-host 192.168.1.100
 
     # UART mode
@@ -378,15 +381,26 @@ def main():
         help="UART baud rate (default: 57600)"
     )
     parser.add_argument(
+        "--tcp-host",
+        default=None,
+        help="TCP host IP (use TCP if specified)"
+    )
+    parser.add_argument(
+        "--tcp-port",
+        type=int,
+        default=5760,
+        help="TCP port (default: 5760)"
+    )
+    parser.add_argument(
         "--wifi-host",
         default="localhost",
-        help="WiFi host IP (default: localhost)"
+        help="WiFi (UDP) host IP (default: localhost)"
     )
     parser.add_argument(
         "--wifi-port",
         type=int,
         default=14540,
-        help="WiFi UDP port (default: 14540)"
+        help="WiFi (UDP) port (default: 14540)"
     )
     parser.add_argument(
         "--timeout",
@@ -397,9 +411,11 @@ def main():
 
     args = parser.parse_args()
 
-    # Build connection string
+    # Build connection string (priority: UART > TCP > WiFi)
     if args.uart:
         connection_string = f"serial://{args.uart_device}:{args.uart_baud}"
+    elif args.tcp_host:
+        connection_string = f"tcp://{args.tcp_host}:{args.tcp_port}"
     else:
         connection_string = f"udp://{args.wifi_host}:{args.wifi_port}"
 
@@ -414,16 +430,16 @@ def main():
 if __name__ == "__main__":
     main()
 EOF
-    
+
     chmod +x ~/mavlink_test/test_connection.py
-    
+
     log_info "Test script created at ~/mavlink_test/test_connection.py"
 }
 
 # Print summary
 print_summary() {
     log_step "Setup Complete!"
-    
+
     echo ""
     echo -e "${GREEN}======================================${NC}"
     echo -e "${GREEN}  Raspberry Pi MAVLink Setup Complete ${NC}"
@@ -434,7 +450,7 @@ print_summary() {
     echo "  - MAVSDK-Python"
     echo "  - pyserial"
     echo ""
-    
+
     if [ "$SKIP_UART" = false ]; then
         echo "UART Configuration:"
         echo "  - UART enabled on GPIO 14/15"
@@ -443,7 +459,7 @@ print_summary() {
         echo "  - Baud rate: $UART_BAUD"
         echo ""
     fi
-    
+
     echo "Hardware Connection (UART to Cube+ Orange TELEM2):"
     echo ""
     echo "  Cube+ Orange TELEM2      Raspberry Pi GPIO"
@@ -457,13 +473,20 @@ print_summary() {
     echo ""
     echo "Example usage:"
     echo ""
-    echo "  # Test WiFi connection to SITL"
+    echo "  # Test TCP connection to SITL (recommended)"
+    echo "  python3 ~/mavlink_test/test_connection.py --tcp-host <SITL_IP>"
+    echo ""
+    echo "  # Test WiFi (UDP) connection to SITL"
     echo "  python3 ~/mavlink_test/test_connection.py --wifi-host <SITL_IP>"
     echo ""
     echo "  # Test UART connection to Cube+ Orange"
     echo "  python3 ~/mavlink_test/test_connection.py --uart"
     echo ""
-    
+    echo "TCP vs WiFi (UDP):"
+    echo "  - TCP: Reliable, works through NAT/firewalls (recommended)"
+    echo "  - WiFi: Lower latency, requires same network"
+    echo ""
+
     if [ "$SKIP_UART" = false ]; then
         echo -e "${YELLOW}IMPORTANT: A reboot is required for UART changes to take effect.${NC}"
         echo ""
@@ -475,7 +498,7 @@ prompt_reboot() {
     if [ "$SKIP_UART" = true ] || [ "$SKIP_REBOOT" = true ]; then
         return
     fi
-    
+
     read -p "Reboot now? (y/N) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -493,7 +516,7 @@ main() {
     echo -e "${BLUE}  Raspberry Pi MAVLink Setup Script  ${NC}"
     echo -e "${BLUE}======================================${NC}"
     echo ""
-    
+
     check_raspberry_pi
     check_python
     update_system

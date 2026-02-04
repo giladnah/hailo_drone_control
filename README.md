@@ -313,9 +313,9 @@ ls -la /dev/cube_orange
 
 ## Raspberry Pi Connection
 
-Connect a Raspberry Pi to control the drone via UART (production) or WiFi (testing with SITL).
+Connect a Raspberry Pi to control the drone via UART (production) or TCP/WiFi (testing with SITL).
 
-### Quick Start (WiFi - Testing)
+### Quick Start (TCP - Recommended for Testing)
 
 1. **Start SITL on host:**
    ```bash
@@ -336,12 +336,19 @@ Connect a Raspberry Pi to control the drone via UART (production) or WiFi (testi
    git clone <repository-url>
    cd hailo_drone_control
 
-   # Test connection
-   python3 examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+   # Test connection (TCP recommended - more reliable)
+   python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
 
    # Run a flight example
-   python3 examples/simple_takeoff_land.py -c wifi --wifi-host 192.168.1.100 --altitude 5
+   python3 examples/simple_takeoff_land.py -c tcp --tcp-host 192.168.1.100 --altitude 5
    ```
+
+### TCP vs WiFi (UDP)
+
+| Method | Use Case |
+|--------|----------|
+| **TCP** (recommended) | Reliable, works through NAT/firewalls, Pi connects to SITL |
+| **WiFi (UDP)** | Lower latency, requires same network |
 
 ### Quick Start (UART - Production)
 
@@ -366,10 +373,13 @@ Connect a Raspberry Pi to control the drone via UART (production) or WiFi (testi
 
 ### Connection Types
 
-All example scripts support both connection modes:
+All example scripts support three connection modes:
 
 ```bash
-# WiFi mode (default - SITL testing)
+# TCP mode (recommended for testing - reliable)
+python3 examples/hover_rotate.py -c tcp --tcp-host 192.168.1.100
+
+# WiFi/UDP mode (low latency, same network)
 python3 examples/hover_rotate.py -c wifi --wifi-host 192.168.1.100
 
 # UART mode (production - Cube+ Orange)

@@ -1,29 +1,64 @@
 # Raspberry Pi MAVLink Connection Guide
 
-Complete guide for connecting a Raspberry Pi to PX4 autopilots (Cube+ Orange) via UART or WiFi.
+Complete guide for connecting a Raspberry Pi to PX4 autopilots (Cube+ Orange) via UART, TCP, or WiFi.
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Connection Types Explained](#connection-types-explained)
 - [Hardware Requirements](#hardware-requirements)
 - [Hardware Connection (UART)](#hardware-connection-uart)
 - [Software Installation](#software-installation)
 - [UART Configuration](#uart-configuration)
-- [WiFi Configuration](#wifi-configuration)
+- [Network Configuration (TCP/WiFi)](#network-configuration-tcpwifi)
 - [Testing the Connection](#testing-the-connection)
 - [Running Example Scripts](#running-example-scripts)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-This guide covers two connection methods:
+This guide covers three connection methods:
 
 | Method | Use Case | Connection String |
 |--------|----------|-------------------|
 | **UART** | Production - Direct serial to Cube+ Orange TELEM2 | `serial:///dev/ttyAMA0:57600` |
-| **WiFi** | Testing - UDP connection to SITL simulator | `udp://192.168.1.100:14540` |
+| **TCP** | Testing - Reliable network connection to SITL (recommended) | `tcp://192.168.1.100:5760` |
+| **WiFi (UDP)** | Testing - Low-latency UDP connection to SITL | `udp://192.168.1.100:14540` |
 
-Both methods use the same Python code - only the connection string changes.
+All methods use the same Python code - only the connection string changes.
+
+## Connection Types Explained
+
+### TCP vs WiFi (UDP) - When to Use Each
+
+| Aspect | TCP (Recommended for Pi) | WiFi (UDP) |
+|--------|--------------------------|------------|
+| **Protocol** | TCP - Connection-oriented | UDP - Connectionless |
+| **Reliability** | Guaranteed delivery, ordered packets | May lose packets, no ordering |
+| **Connection** | Pi connects TO SITL server | SITL pushes TO Pi's IP |
+| **NAT/Firewall** | Works easily (client initiates) | Harder (needs bidirectional) |
+| **Setup** | Just need SITL host IP | Need to configure SITL to push to Pi |
+| **Latency** | Slightly higher | Lower |
+| **Best For** | Remote connections, reliability | Same-network, real-time control |
+
+**Recommendation**: Use **TCP** for Raspberry Pi connections because:
+1. **Simpler setup** - Pi connects to SITL, no need to configure SITL with Pi's IP
+2. **Works through routers** - NAT/firewall friendly
+3. **Reliable** - Guaranteed packet delivery
+4. **No packet loss** - Important for command/control
+
+Use **UDP (WiFi)** when:
+- You need absolute minimum latency
+- Pi and SITL are on the same local network
+- You've configured SITL to push to Pi's specific IP
+
+### UART - Production Connection
+
+UART (serial) is used for the actual drone deployment:
+- Direct wired connection to Cube+ Orange TELEM2 port
+- No network required
+- Most reliable for flight operations
+- Same code works for both testing (TCP/UDP) and production (UART)
 
 ## Hardware Requirements
 
@@ -189,37 +224,47 @@ groups $USER  # Should include 'dialout'
 python3 -c "import serial; s = serial.Serial('/dev/ttyAMA0', 57600); print('OK'); s.close()"
 ```
 
-## WiFi Configuration
+## Network Configuration (TCP/WiFi)
 
 ### Host Machine Setup (SITL)
 
-On the host machine running SITL, expose the MAVLink port to the network:
+On the host machine running SITL, the following ports are exposed by default:
 
-1. **Start SITL with network access:**
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 5760 | TCP | MAVLink TCP server (recommended for Pi) |
+| 14540 | UDP | MAVLink UDP for MAVSDK |
+| 14551 | UDP | MAVLink UDP for QGC |
 
-   Edit `docker-compose.yml` to expose port 14540:
-   
-   ```yaml
-   px4-sitl:
-     ports:
-       - "14540:14540/udp"
-   ```
+These are configured in `docker-compose.yml`:
 
-2. **Find host IP address:**
+```yaml
+px4-sitl:
+  ports:
+    - "5760:5760/tcp"      # TCP server (recommended)
+    - "14540:14540/udp"    # UDP for MAVSDK
+    - "14551:14550/udp"    # UDP for QGC
+```
 
-   ```bash
-   # On Linux
-   ip addr show | grep "inet " | grep -v 127.0.0.1
-   
-   # Or
-   hostname -I
-   ```
+**Find your host IP address:**
 
-3. **Verify firewall allows UDP 14540:**
+```bash
+# On Linux
+ip addr show | grep "inet " | grep -v 127.0.0.1
 
-   ```bash
-   sudo ufw allow 14540/udp
-   ```
+# Or simply
+hostname -I
+```
+
+**Verify firewall allows connections:**
+
+```bash
+# For TCP (recommended)
+sudo ufw allow 5760/tcp
+
+# For UDP (if using WiFi mode)
+sudo ufw allow 14540/udp
+```
 
 ### Raspberry Pi Network Setup
 
@@ -228,7 +273,7 @@ On the host machine running SITL, expose the MAVLink port to the network:
    ```bash
    # Check WiFi connection
    iwconfig wlan0
-   
+
    # Get Pi's IP address
    ip addr show wlan0
    ```
@@ -238,47 +283,89 @@ On the host machine running SITL, expose the MAVLink port to the network:
    ```bash
    # Ping host machine
    ping 192.168.1.100  # Replace with your host IP
+
+   # Test TCP port is reachable
+   nc -zv 192.168.1.100 5760
    ```
+
+### Choosing TCP vs UDP
+
+**Use TCP (recommended):**
+```bash
+python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
+```
+
+**Use UDP (WiFi) only if:**
+- You need minimum latency
+- You're on the same local network
+- TCP has issues in your environment
+
+```bash
+python3 examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+```
 
 ## Testing the Connection
 
 ### Test Script
 
-Use the test script installed by `setup_pi.sh`:
+Use the test scripts to verify connectivity:
 
 ```bash
-# WiFi connection test
-python3 ~/mavlink_test/test_connection.py --wifi-host 192.168.1.100
+# TCP connection test (recommended)
+python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
+
+# WiFi (UDP) connection test
+python3 examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
 
 # UART connection test
-python3 ~/mavlink_test/test_connection.py --uart
+python3 examples/pi_connection_test.py -c uart
 
-# UART with custom device/baud
-python3 ~/mavlink_test/test_connection.py --uart --uart-device /dev/ttyAMA0 --uart-baud 57600
+# Full diagnostic mode
+python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100 --full-diagnostic
+```
+
+Or use the simple test script installed by `setup_pi.sh`:
+
+```bash
+# TCP connection
+python3 ~/mavlink_test/test_connection.py --tcp-host 192.168.1.100
+
+# UART connection
+python3 ~/mavlink_test/test_connection.py --uart
 ```
 
 ### Expected Output
 
-Successful connection:
+Successful TCP connection:
 
 ```
-Connecting to: udp://192.168.1.100:14540
-Waiting for connection...
-
 ==================================================
-CONNECTION SUCCESSFUL!
+MAVLink Connection Configuration
+==================================================
+  Type: TCP
+  Host: 192.168.1.100
+  Port: 5760
+
+  Connection String: tcp://192.168.1.100:5760
 ==================================================
 
-Telemetry:
+Connecting to: tcp://192.168.1.100:5760
+Timeout: 30.0s
+--------------------------------------------------
+Waiting for heartbeat...
+  Heartbeat received after 0.8s
+
+Gathering telemetry...
   Armed: False
   In Air: False
-  Position: 47.397742, 8.545594
-  Altitude: 0.1m
-  Battery: 100% (16.8V)
-  Flight Mode: MANUAL
+  Position: 47.397743, 8.545595
+  Altitude: 0.1m (relative)
+  Battery: 100% (16.2V)
+  Flight Mode: HOLD
+  GPS: 10 satellites, FIX_3D
 
 ==================================================
-Test completed successfully!
+  CONNECTION TEST: PASSED
 ==================================================
 ```
 
@@ -461,12 +548,24 @@ Ensure these parameters are set in QGroundControl:
 
 ### Connection Strings
 
-| Mode | Connection String |
-|------|-------------------|
-| UART (default) | `serial:///dev/ttyAMA0:57600` |
-| UART (custom) | `serial:///dev/ttyUSB0:921600` |
-| WiFi (to host) | `udp://192.168.1.100:14540` |
-| WiFi (listen) | `udpin://0.0.0.0:14540` |
+| Mode | Connection String | When to Use |
+|------|-------------------|-------------|
+| **TCP (recommended)** | `tcp://192.168.1.100:5760` | Remote connections, reliability needed |
+| **WiFi (UDP)** | `udp://192.168.1.100:14540` | Same network, low latency needed |
+| **UART** | `serial:///dev/ttyAMA0:57600` | Production with Cube+ Orange |
+
+### Command Line Examples
+
+```bash
+# TCP connection (recommended for Pi)
+python3 examples/simple_takeoff_land.py -c tcp --tcp-host 192.168.1.100
+
+# WiFi (UDP) connection
+python3 examples/simple_takeoff_land.py -c wifi --wifi-host 192.168.1.100
+
+# UART connection (production)
+python3 examples/simple_takeoff_land.py -c uart
+```
 
 ### Common Commands
 

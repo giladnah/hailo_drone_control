@@ -2,28 +2,49 @@
 """
 mavlink_connection.py - MAVLink Connection Helper Utility
 
-Provides a unified interface for connecting to MAVLink via UART or WiFi.
-Supports both production (UART to TELEM2) and testing (WiFi to SITL) modes.
+Provides a unified interface for connecting to MAVLink via TCP, WiFi (UDP), or UART.
+Supports both production (UART to TELEM2) and testing (TCP/WiFi to SITL) modes.
+
+Connection Types:
+    - tcp: TCP connection (RECOMMENDED for remote connections)
+    - wifi: UDP connection (lower latency, same network)
+    - uart: Serial connection (production - Cube+ Orange TELEM2)
+
+TCP vs WiFi (UDP):
+    TCP is recommended for Raspberry Pi connections because:
+    - Reliable: Guaranteed packet delivery (no lost commands)
+    - NAT-friendly: Pi connects TO server, works through routers
+    - Simple: No need to configure SITL with Pi's IP address
+
+    WiFi (UDP) may be preferred when:
+    - Minimum latency is critical
+    - Pi and SITL are on the same local network
+    - SITL is configured to push to Pi's IP
 
 Usage:
     from scripts.mavlink_connection import get_connection_string, ConnectionConfig
 
+    # TCP mode (recommended for testing - SITL)
+    conn_str = get_connection_string("tcp", host="192.168.1.100", port=5760)
+
+    # WiFi/UDP mode (same network, low latency)
+    conn_str = get_connection_string("wifi", host="192.168.1.100", port=14540)
+
     # UART mode (production - Cube+ Orange TELEM2)
     conn_str = get_connection_string("uart", device="/dev/ttyAMA0", baud=57600)
-
-    # WiFi mode (testing - SITL)
-    conn_str = get_connection_string("wifi", host="192.168.1.100", port=14540)
 
     # Using config object
     config = ConnectionConfig.from_env()
     conn_str = config.get_connection_string()
 
 Environment Variables:
-    PI_CONNECTION_TYPE  - Connection type: "uart" or "wifi" (default: wifi)
+    PI_CONNECTION_TYPE  - Connection type: "tcp", "wifi", or "uart" (default: wifi)
+    PI_TCP_HOST         - TCP host IP (default: localhost)
+    PI_TCP_PORT         - TCP port (default: 5760)
+    PI_WIFI_HOST        - WiFi (UDP) host IP (default: localhost)
+    PI_WIFI_PORT        - WiFi (UDP) port (default: 14540)
     PI_UART_DEVICE      - Serial device path (default: /dev/ttyAMA0)
     PI_UART_BAUD        - Serial baud rate (default: 57600)
-    PI_WIFI_HOST        - WiFi host IP (default: localhost)
-    PI_WIFI_PORT        - WiFi UDP port (default: 14540)
 """
 
 import glob
@@ -38,6 +59,7 @@ class ConnectionType(Enum):
     """MAVLink connection types."""
     UART = "uart"
     WIFI = "wifi"
+    TCP = "tcp"
 
 
 # Default configuration values
@@ -47,6 +69,8 @@ DEFAULTS = {
     "uart_baud": 57600,  # Standard for TELEM2
     "wifi_host": "localhost",
     "wifi_port": 14540,
+    "tcp_host": "localhost",
+    "tcp_port": 5760,
 }
 
 # Common serial port patterns on Raspberry Pi
@@ -65,17 +89,21 @@ class ConnectionConfig:
     MAVLink connection configuration.
 
     Attributes:
-        connection_type: Type of connection (uart or wifi).
+        connection_type: Type of connection (uart, wifi, or tcp).
         uart_device: Serial device path for UART mode.
         uart_baud: Baud rate for UART mode.
         wifi_host: Host IP/hostname for WiFi mode.
         wifi_port: UDP port for WiFi mode.
+        tcp_host: Host IP/hostname for TCP mode.
+        tcp_port: TCP port for TCP mode.
     """
     connection_type: ConnectionType
     uart_device: str = DEFAULTS["uart_device"]
     uart_baud: int = DEFAULTS["uart_baud"]
     wifi_host: str = DEFAULTS["wifi_host"]
     wifi_port: int = DEFAULTS["wifi_port"]
+    tcp_host: str = DEFAULTS["tcp_host"]
+    tcp_port: int = DEFAULTS["tcp_port"]
 
     @classmethod
     def from_env(cls) -> "ConnectionConfig":
@@ -114,6 +142,14 @@ class ConnectionConfig:
                 "PI_WIFI_PORT",
                 DEFAULTS["wifi_port"]
             )),
+            tcp_host=os.environ.get(
+                "PI_TCP_HOST",
+                DEFAULTS["tcp_host"]
+            ),
+            tcp_port=int(os.environ.get(
+                "PI_TCP_PORT",
+                DEFAULTS["tcp_port"]
+            )),
         )
 
     @classmethod
@@ -124,16 +160,20 @@ class ConnectionConfig:
         uart_baud: int = None,
         wifi_host: str = None,
         wifi_port: int = None,
+        tcp_host: str = None,
+        tcp_port: int = None,
     ) -> "ConnectionConfig":
         """
         Create configuration from arguments with environment fallback.
 
         Args:
-            connection_type: Connection type string ("uart" or "wifi").
+            connection_type: Connection type string ("uart", "wifi", or "tcp").
             uart_device: Serial device path.
             uart_baud: Serial baud rate.
             wifi_host: WiFi host IP.
             wifi_port: WiFi UDP port.
+            tcp_host: TCP host IP.
+            tcp_port: TCP port.
 
         Returns:
             ConnectionConfig: Configuration with argument overrides.
@@ -156,6 +196,10 @@ class ConnectionConfig:
             config.wifi_host = wifi_host
         if wifi_port is not None:
             config.wifi_port = wifi_port
+        if tcp_host is not None:
+            config.tcp_host = tcp_host
+        if tcp_port is not None:
+            config.tcp_port = tcp_port
 
         return config
 
@@ -168,6 +212,8 @@ class ConnectionConfig:
         """
         if self.connection_type == ConnectionType.UART:
             return f"serial://{self.uart_device}:{self.uart_baud}"
+        elif self.connection_type == ConnectionType.TCP:
+            return f"tcp://{self.tcp_host}:{self.tcp_port}"
         else:
             return f"udp://{self.wifi_host}:{self.wifi_port}"
 
@@ -175,6 +221,8 @@ class ConnectionConfig:
         """String representation showing current settings."""
         if self.connection_type == ConnectionType.UART:
             return f"UART: {self.uart_device} @ {self.uart_baud} baud"
+        elif self.connection_type == ConnectionType.TCP:
+            return f"TCP: {self.tcp_host}:{self.tcp_port}"
         else:
             return f"WiFi: {self.wifi_host}:{self.wifi_port}"
 
@@ -192,11 +240,11 @@ def get_connection_string(
     This is a convenience function for simple use cases.
 
     Args:
-        connection_type: "uart" or "wifi" (default: wifi).
+        connection_type: "uart", "wifi", or "tcp" (default: wifi).
         device: Serial device path for UART (default: /dev/ttyAMA0).
         baud: Baud rate for UART (default: 57600).
-        host: Host IP for WiFi (default: localhost).
-        port: UDP port for WiFi (default: 14540).
+        host: Host IP for WiFi/TCP (default: localhost).
+        port: Port for WiFi (UDP 14540) or TCP (5760).
 
     Returns:
         str: MAVSDK-compatible connection string.
@@ -211,8 +259,8 @@ def get_connection_string(
         >>> get_connection_string("wifi", host="192.168.1.100")
         'udp://192.168.1.100:14540'
 
-        >>> get_connection_string("wifi", host="192.168.1.100", port=14550)
-        'udp://192.168.1.100:14550'
+        >>> get_connection_string("tcp", host="192.168.1.100")
+        'tcp://192.168.1.100:5760'
     """
     conn_type = connection_type.lower()
 
@@ -226,10 +274,15 @@ def get_connection_string(
         port = port or DEFAULTS["wifi_port"]
         return f"udp://{host}:{port}"
 
+    elif conn_type == "tcp":
+        host = host or DEFAULTS["tcp_host"]
+        port = port or DEFAULTS["tcp_port"]
+        return f"tcp://{host}:{port}"
+
     else:
         raise ValueError(
             f"Unknown connection type: {connection_type}. "
-            "Use 'uart' or 'wifi'."
+            "Use 'uart', 'wifi', or 'tcp'."
         )
 
 
@@ -332,6 +385,18 @@ def validate_config(config: ConnectionConfig) -> dict:
                 f"Baud rate {config.uart_baud} differs from TELEM2 default (57600)"
             )
 
+    elif config.connection_type == ConnectionType.TCP:
+        # Validate TCP settings
+        if not config.tcp_host:
+            result["valid"] = False
+            result["errors"].append("TCP host not specified")
+
+        if config.tcp_port < 1 or config.tcp_port > 65535:
+            result["valid"] = False
+            result["errors"].append(
+                f"Invalid TCP port number: {config.tcp_port}"
+            )
+
     else:
         # Validate WiFi settings
         if not config.wifi_host:
@@ -368,9 +433,9 @@ def add_connection_arguments(parser) -> None:
 
     conn_group.add_argument(
         "--connection-type", "-c",
-        choices=["uart", "wifi"],
+        choices=["uart", "wifi", "tcp"],
         default=None,
-        help="Connection type: uart (serial) or wifi (UDP). "
+        help="Connection type: uart (serial), wifi (UDP), or tcp. "
              "Default: PI_CONNECTION_TYPE env or 'wifi'"
     )
 
@@ -404,6 +469,21 @@ def add_connection_arguments(parser) -> None:
              f"Default: PI_WIFI_PORT env or {DEFAULTS['wifi_port']}"
     )
 
+    conn_group.add_argument(
+        "--tcp-host",
+        default=None,
+        help=f"Host IP for TCP mode. "
+             f"Default: PI_TCP_HOST env or '{DEFAULTS['tcp_host']}'"
+    )
+
+    conn_group.add_argument(
+        "--tcp-port",
+        type=int,
+        default=None,
+        help=f"TCP port for TCP mode. "
+             f"Default: PI_TCP_PORT env or {DEFAULTS['tcp_port']}"
+    )
+
 
 def print_connection_info(config: ConnectionConfig) -> None:
     """
@@ -432,6 +512,9 @@ def print_connection_info(config: ConnectionConfig) -> None:
             print(f"  Port Status: OK ({', '.join(access)})")
         else:
             print(f"  Port Status: NOT FOUND")
+    elif config.connection_type == ConnectionType.TCP:
+        print(f"  Host: {config.tcp_host}")
+        print(f"  Port: {config.tcp_port}")
     else:
         print(f"  Host: {config.wifi_host}")
         print(f"  Port: {config.wifi_port}")

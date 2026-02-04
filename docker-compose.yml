@@ -74,8 +74,9 @@ services:
         ipv4_address: 172.28.0.10
     # Expose MAVLink ports for external connections (e.g., Raspberry Pi via WiFi)
     ports:
-      - "${PI_MAVLINK_PORT:-14540}:14540/udp"    # MAVSDK API for external clients
+      - "${PI_MAVLINK_PORT:-14540}:14540/udp"    # MAVSDK API for external clients (UDP)
       - "${PI_QGC_PORT:-14551}:14550/udp"        # QGC for external GCS
+      - "${PI_TCP_PORT:-5760}:5760/tcp"          # TCP server for external clients (recommended)
     devices:
       - /dev/dri:/dev/dri
     stdin_open: true

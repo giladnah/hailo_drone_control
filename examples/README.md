@@ -89,15 +89,80 @@ python3 geofence_setup.py --radius 100 --max-altitude 50
 python3 geofence_setup.py --clear
 ```
 
+### Raspberry Pi
+
+#### `pi_connection_test.py`
+Comprehensive connection diagnostics for Raspberry Pi:
+- Tests both UART and WiFi connections
+- Verifies MAVLink heartbeat reception
+- Displays telemetry and system health
+- Provides connection troubleshooting
+
+```bash
+# WiFi mode (testing with SITL)
+python3 pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+
+# UART mode (production with Cube+ Orange)
+python3 pi_connection_test.py -c uart
+
+# Full diagnostic mode
+python3 pi_connection_test.py -c uart --full-diagnostic
+```
+
+#### `pi_simple_control.py`
+Minimal control example for Raspberry Pi:
+- Connect via UART or WiFi
+- Monitor telemetry
+- Execute simple takeoff and land
+
+```bash
+# Monitor only (no flight)
+python3 pi_simple_control.py -c wifi --wifi-host 192.168.1.100 --monitor-only
+
+# Simple flight
+python3 pi_simple_control.py -c uart --altitude 5
+```
+
 ## Common Options
 
-All examples support these common options:
+All examples support these connection options:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--host` | MAVLink server host | `localhost` or `MAVLINK_HOST` env |
-| `--port` | MAVLink server port | `14540` or `MAVLINK_PORT` env |
+| `-c`, `--connection-type` | Connection type: `tcp`, `wifi`, or `uart` | `wifi` or `PI_CONNECTION_TYPE` env |
+| `--tcp-host` | TCP host IP address | `localhost` or `PI_TCP_HOST` env |
+| `--tcp-port` | TCP port | `5760` or `PI_TCP_PORT` env |
+| `--wifi-host` | WiFi (UDP) host IP address | `localhost` or `PI_WIFI_HOST` env |
+| `--wifi-port` | WiFi (UDP) port | `14540` or `PI_WIFI_PORT` env |
+| `--uart-device` | UART serial device path | `/dev/ttyAMA0` or `PI_UART_DEVICE` env |
+| `--uart-baud` | UART baud rate | `57600` or `PI_UART_BAUD` env |
 | `--verbose` / `-v` | Enable verbose output | `False` |
+
+### TCP vs WiFi (UDP)
+
+| Method | Protocol | Best For |
+|--------|----------|----------|
+| **TCP** (recommended) | TCP | Remote connections, reliability, works through NAT |
+| **WiFi** | UDP | Same network, minimum latency |
+| **UART** | Serial | Production with Cube+ Orange |
+
+### Connection Examples
+
+```bash
+# TCP connection to SITL (recommended for Raspberry Pi)
+python3 simple_takeoff_land.py -c tcp --tcp-host 192.168.1.100 --altitude 5
+
+# WiFi (UDP) connection to SITL
+python3 simple_takeoff_land.py -c wifi --wifi-host 192.168.1.100 --altitude 5
+
+# UART connection to Cube+ Orange
+python3 simple_takeoff_land.py -c uart --altitude 5
+
+# Using environment variables
+export PI_CONNECTION_TYPE=tcp
+export PI_TCP_HOST=192.168.1.100
+python3 simple_takeoff_land.py --altitude 5
+```
 
 ## Running with Docker
 

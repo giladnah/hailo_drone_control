@@ -374,6 +374,8 @@ def main():
         uart_baud=args.uart_baud,
         wifi_host=args.wifi_host,
         wifi_port=args.wifi_port,
+        tcp_host=args.tcp_host,
+        tcp_port=args.tcp_port,
     )
 
     # Print connection info
