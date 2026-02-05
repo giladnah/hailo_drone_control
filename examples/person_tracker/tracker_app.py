@@ -334,12 +334,14 @@ async def drone_control_loop(
     interval = 1.0 / control_rate
     last_command_time = time.time()
     offboard_started = False
+    loop_count = 0
 
     logger.info("Control loop started at %.1f Hz", control_rate)
 
     try:
         while True:
             loop_start = time.time()
+            loop_count += 1
 
             # Get current detection from global state
             detection = _tracker_state["detection"]
@@ -348,6 +350,18 @@ async def drone_control_loop(
 
             # Compute velocity command
             command = tracking_controller.compute(detection, frame_width, frame_height)
+
+            # Debug: Log why commands might not be sent (every 10 seconds)
+            if loop_count % 100 == 0:
+                logger.info(
+                    "Control loop status: tracking_enabled=%s, enabled=%s, manual_active=%s, no_drone=%s, drone=%s, offboard_started=%s",
+                    mode_manager.tracking_enabled,
+                    mode_manager.state.enabled,
+                    mode_manager.state.manual_active,
+                    no_drone,
+                    drone is not None,
+                    offboard_started,
+                )
 
             # Only send commands if tracking is enabled
             if mode_manager.tracking_enabled and not no_drone and drone:
@@ -385,6 +399,22 @@ async def drone_control_loop(
 
                 except Exception as e:
                     logger.error("Command send error: %s", e)
+
+            elif not mode_manager.tracking_enabled and not no_drone and drone and detection is not None:
+                # Tracking disabled but detection present - warn user
+                if loop_count % 100 == 0:  # Log every 10 seconds
+                    if mode_manager.state.manual_active:
+                        logger.warning(
+                            "Tracking commands computed but NOT SENT: Manual control is active (tracking inhibited). "
+                            "Use HTTP API to clear manual: curl -X POST http://localhost:%d/clear_manual",
+                            mode_manager.config.http_port,
+                        )
+                    elif not mode_manager.state.enabled:
+                        logger.warning(
+                            "Tracking commands computed but NOT SENT: Tracking is disabled. "
+                            "Enable via: curl -X POST http://localhost:%d/enable or use --auto-enable flag",
+                            mode_manager.config.http_port,
+                        )
 
             elif not mode_manager.tracking_enabled and offboard_started and drone:
                 # Tracking disabled - send hover command
