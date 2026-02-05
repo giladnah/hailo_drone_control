@@ -88,7 +88,7 @@ check_raspberry_pi() {
     log_step "Checking system..."
 
     if [ -f /proc/device-tree/model ]; then
-        MODEL=$(cat /proc/device-tree/model)
+        MODEL=$(cat /proc/device-tree/model | tr -d '\0')
         log_info "Detected: $MODEL"
     else
         log_warn "Could not detect Raspberry Pi model"
@@ -203,16 +203,105 @@ install_python_packages() {
 
     # Verify installation
     log_info "Verifying MAVSDK installation..."
-    if python -c "import mavsdk; print(f'MAVSDK version: {mavsdk.__version__}')" 2>/dev/null; then
-        log_info "MAVSDK installed successfully"
+    if python -c "import mavsdk" 2>/dev/null; then
+        # Try to get version if available
+        VERSION=$(python -c "import mavsdk; print(getattr(mavsdk, '__version__', 'unknown'))" 2>/dev/null || echo "unknown")
+        log_info "MAVSDK installed successfully (version: $VERSION)"
     else
         log_error "MAVSDK installation failed"
+        log_error "Attempting to show error details..."
+        python -c "import mavsdk" 2>&1 || true
         deactivate
         exit 1
     fi
 
     # Deactivate venv
     deactivate
+}
+
+# Install hailo-apps-internal
+install_hailo_apps() {
+    log_step "Installing hailo-apps-internal..."
+
+    HAILO_APPS_DIR="$HOME/hailo-apps-internal"
+    HAILO_APPS_REPO="https://github.com/hailocs/hailo-apps-internal.git"
+
+    # Check if repo already exists
+    if [ -d "$HAILO_APPS_DIR" ]; then
+        log_info "hailo-apps-internal directory already exists at $HAILO_APPS_DIR"
+        read -p "Re-clone the repository? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Removing existing directory..."
+            rm -rf "$HAILO_APPS_DIR"
+        else
+            log_info "Using existing repository"
+        fi
+    fi
+
+    # Clone repository if it doesn't exist
+    if [ ! -d "$HAILO_APPS_DIR" ]; then
+        log_info "Cloning hailo-apps-internal repository..."
+        git clone "$HAILO_APPS_REPO" "$HAILO_APPS_DIR"
+        if [ $? -ne 0 ]; then
+            log_error "Failed to clone hailo-apps-internal repository"
+            return 1
+        fi
+        log_info "Repository cloned successfully"
+    fi
+
+    # Run install.sh
+    if [ -f "$HAILO_APPS_DIR/install.sh" ]; then
+        log_info "Running install.sh..."
+        cd "$HAILO_APPS_DIR"
+        sudo ./install.sh
+        if [ $? -ne 0 ]; then
+            log_error "hailo-apps-internal install.sh failed"
+            return 1
+        fi
+        log_info "install.sh completed successfully"
+    else
+        log_warn "install.sh not found in $HAILO_APPS_DIR"
+    fi
+
+    # Install via pip in venv_mavlink interactively
+    log_info "Installing hailo-apps-internal in venv_mavlink..."
+    log_info "This will be done interactively - you may be prompted for input"
+
+    # Activate virtual environment
+    source "$VENV_DIR/bin/activate"
+
+    cd "$HAILO_APPS_DIR"
+    log_info "Running: pip install -e . (interactive mode)"
+    log_info "You may be prompted for input during installation..."
+    pip install -e .
+
+    if [ $? -eq 0 ]; then
+        log_info "hailo-apps-internal installed successfully in venv_mavlink"
+    else
+        log_error "Failed to install hailo-apps-internal via pip"
+        deactivate
+        return 1
+    fi
+
+    # Verify installation
+    log_info "Verifying installation..."
+    if python -c "import hailo_apps" 2>/dev/null; then
+        log_info "hailo_apps module imported successfully"
+    else
+        log_warn "Could not import hailo_apps - installation may have issues"
+    fi
+
+    # Deactivate venv
+    deactivate
+
+    # Note about Cursor workspace
+    log_info ""
+    log_info "To add hailo-apps-internal to Cursor workspace:"
+    log_info "  1. Open Cursor"
+    log_info "  2. File -> Add Folder to Workspace..."
+    log_info "  3. Select: $HAILO_APPS_DIR"
+    log_info ""
 }
 
 # Configure serial port permissions
@@ -502,13 +591,20 @@ print_summary() {
     echo ""
     echo "Virtual Environment:"
     echo "  Location: $VENV_DIR"
-    echo "  Includes: MAVSDK-Python, pyserial"
+    echo "  Includes: MAVSDK-Python, pyserial, hailo-apps-internal"
     echo "  Has access to system packages"
     echo ""
     echo "Installed software:"
     echo "  - Python 3 with pip"
     echo "  - MAVSDK-Python (in venv)"
     echo "  - pyserial (in venv)"
+    echo "  - hailo-apps-internal (in venv)"
+    echo ""
+    echo "hailo-apps-internal:"
+    echo "  Location: ~/hailo-apps-internal"
+    echo "  Repository: https://github.com/hailocs/hailo-apps-internal"
+    echo "  Installed via: install.sh + pip install -e ."
+    echo "  Note: Add to Cursor workspace via File -> Add Folder to Workspace..."
     echo ""
 
     if [ "$SKIP_UART" = false ]; then
@@ -591,6 +687,7 @@ main() {
     install_packages
     create_venv
     install_python_packages
+    install_hailo_apps
     configure_permissions
     configure_uart
     create_test_script
