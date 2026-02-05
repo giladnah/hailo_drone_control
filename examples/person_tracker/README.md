@@ -61,6 +61,78 @@ Options:
   --use-frame          Extract frames for OpenCV processing
 ```
 
+## Remote Connections
+
+### Architecture Overview
+
+The tracker application runs on the machine with the camera (e.g., Raspberry Pi). The **ModeManager** is part of the tracker process and runs on the same machine, providing an HTTP API on port 8080.
+
+**Important:** When running on a remote machine, you must specify the IP address of the machine running the drone/SITL, not `localhost`.
+
+### Running on Remote Machine (e.g., Raspberry Pi)
+
+```bash
+# On the remote machine (RPi) with camera
+python examples/person_tracker/tracker_app.py \
+    --input /dev/video0 \
+    --tcp-host 192.168.1.100 \  # IP of machine running drone/SITL
+    --http-port 8080             # HTTP API on remote machine
+```
+
+**Connection Flow:**
+```
+Remote Machine (RPi)                    Drone/SITL Machine
+┌─────────────────────┐                 ┌─────────────────────┐
+│ tracker_app.py      │                 │ mavlink-router      │
+│  ├─ ModeManager      │                 │  TCP Server :5760    │
+│  │  └─ HTTP :8080    │                 └─────────────────────┘
+│  └─ MAVSDK Client    │                          │
+│     tcpout://        │──────────────────────────┘
+│     192.168.1.100:5760│
+└─────────────────────┘
+```
+
+### Common Issues
+
+#### Port 8080 Already in Use
+
+If you see `[Errno 98] address already in use` on port 8080:
+
+```bash
+# Find what's using the port
+sudo lsof -i :8080
+# Or use a different port
+python examples/person_tracker/tracker_app.py \
+    --input /dev/video0 \
+    --tcp-host 192.168.1.100 \
+    --http-port 8081
+```
+
+#### Connection Refused on Remote Machine
+
+**Error:** `connect error: Connection refused (tcp_client_connection.cpp:108)`
+
+**Cause:** Using `localhost` on a remote machine tries to connect to itself, not the drone host.
+
+**Fix:** Always use the actual IP address of the drone/SITL machine:
+
+```bash
+# ❌ Wrong - connects to remote machine itself
+python tracker_app.py --input /dev/video0 --tcp-host localhost
+
+# ✅ Correct - connects to drone/SITL machine
+python tracker_app.py --input /dev/video0 --tcp-host 192.168.1.100
+```
+
+#### Accessing HTTP API from Remote Machine
+
+The HTTP API runs on the remote machine. To access it from another machine:
+
+```bash
+# From your laptop/desktop
+curl http://192.168.1.50:8080/status  # Use RPi's IP address
+```
+
 ## Enabling/Disabling Tracking
 
 ### Method 1: HTTP API (Recommended for Testing)

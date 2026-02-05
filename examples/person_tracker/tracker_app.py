@@ -16,22 +16,29 @@ Features:
     - Horizontal tracking only (no altitude changes)
 
 Usage:
-    # With camera
+    # With camera (local - same machine as drone/SITL)
     python -m examples.person_tracker.tracker_app --input /dev/video0
 
     # With video file (for testing)
     python -m examples.person_tracker.tracker_app --input video.mp4
 
-    # Connect to SITL
+    # Connect to SITL on same machine
     python -m examples.person_tracker.tracker_app --input /dev/video0 --tcp-host localhost
 
+    # Connect to remote drone/SITL (e.g., from Raspberry Pi)
+    python -m examples.person_tracker.tracker_app --input /dev/video0 --tcp-host 192.168.1.100
+
+ 
 Example:
     # Terminal 1: Start SITL
     ./scripts/px4ctl.sh start
 
-    # Terminal 2: Run tracker
+    # Terminal 2: Run tracker (local)
     source venv_mavlink/bin/activate
     python examples/person_tracker/tracker_app.py --input /dev/video0
+
+    # Terminal 2: Run tracker (remote - from RPi)
+    python examples/person_tracker/tracker_app.py --input /dev/video0 --tcp-host 192.168.1.100
 
     # Terminal 3: Control tracking
     curl -X POST http://localhost:8080/enable
