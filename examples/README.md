@@ -34,26 +34,26 @@ The `common/` directory contains shared functionality used across all example sc
 
 Provides reusable functions for common drone operations:
 
-| Function | Description |
-|----------|-------------|
-| `connect_drone()` | Connect to drone and wait for heartbeat |
-| `wait_for_gps()` | Wait for GPS lock |
-| `preflight_check()` | Run standard preflight checks (GPS, battery, position) |
-| `arm_and_takeoff()` | Arm and takeoff to specified altitude |
-| `land_and_disarm()` | Land and wait for disarm |
-| `safe_land()` | Emergency landing attempt |
-| `emergency_stop()` | Kill motors (emergency only!) |
-| `setup_logging()` | Configure logging |
-| `create_argument_parser()` | Create parser with standard connection options |
-| `get_connection_string_from_args()` | Build MAVSDK connection string from args |
-| `get_telemetry_snapshot()` | Get current telemetry values |
+| Function                            | Description                                            |
+| ----------------------------------- | ------------------------------------------------------ |
+| `connect_drone()`                   | Connect to drone and wait for heartbeat                |
+| `wait_for_gps()`                    | Wait for GPS lock                                      |
+| `preflight_check()`                 | Run standard preflight checks (GPS, battery, position) |
+| `arm_and_takeoff()`                 | Arm and takeoff to specified altitude                  |
+| `land_and_disarm()`                 | Land and wait for disarm                               |
+| `safe_land()`                       | Emergency landing attempt                              |
+| `emergency_stop()`                  | Kill motors (emergency only!)                          |
+| `setup_logging()`                   | Configure logging                                      |
+| `create_argument_parser()`          | Create parser with standard connection options         |
+| `get_connection_string_from_args()` | Build MAVSDK connection string from args               |
+| `get_telemetry_snapshot()`          | Get current telemetry values                           |
 
 ### Classes
 
-| Class | Description |
-|-------|-------------|
-| `DroneConnection` | Async context manager for drone connections |
-| `TelemetrySnapshot` | Dataclass for telemetry data |
+| Class               | Description                                 |
+| ------------------- | ------------------------------------------- |
+| `DroneConnection`   | Async context manager for drone connections |
+| `TelemetrySnapshot` | Dataclass for telemetry data                |
 
 ### Usage Example
 
@@ -202,24 +202,24 @@ python3 pi_simple_control.py -c uart --altitude 5
 
 All examples support these connection options:
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-c`, `--connection-type` | Connection type: `tcp`, `wifi`, or `uart` | `wifi` or `PI_CONNECTION_TYPE` env |
-| `--tcp-host` | TCP host IP address | `localhost` or `PI_TCP_HOST` env |
-| `--tcp-port` | TCP port | `5760` or `PI_TCP_PORT` env |
-| `--wifi-host` | WiFi (UDP) host IP address | `localhost` or `PI_WIFI_HOST` env |
-| `--wifi-port` | WiFi (UDP) port | `14540` or `PI_WIFI_PORT` env |
-| `--uart-device` | UART serial device path | `/dev/ttyAMA0` or `PI_UART_DEVICE` env |
-| `--uart-baud` | UART baud rate | `57600` or `PI_UART_BAUD` env |
-| `--verbose` / `-v` | Enable verbose output | `False` |
+| Option                    | Description                               | Default                                |
+| ------------------------- | ----------------------------------------- | -------------------------------------- |
+| `-c`, `--connection-type` | Connection type: `tcp`, `wifi`, or `uart` | `wifi` or `PI_CONNECTION_TYPE` env     |
+| `--tcp-host`              | TCP host IP address                       | `localhost` or `PI_TCP_HOST` env       |
+| `--tcp-port`              | TCP port                                  | `5760` or `PI_TCP_PORT` env            |
+| `--wifi-host`             | WiFi (UDP) host IP address                | `localhost` or `PI_WIFI_HOST` env      |
+| `--wifi-port`             | WiFi (UDP) port                           | `14540` or `PI_WIFI_PORT` env          |
+| `--uart-device`           | UART serial device path                   | `/dev/ttyAMA0` or `PI_UART_DEVICE` env |
+| `--uart-baud`             | UART baud rate                            | `57600` or `PI_UART_BAUD` env          |
+| `--verbose` / `-v`        | Enable verbose output                     | `False`                                |
 
 ### TCP vs WiFi (UDP)
 
-| Method | Protocol | Best For |
-|--------|----------|----------|
-| **TCP** (recommended) | TCP | Remote connections, reliability, works through NAT |
-| **WiFi** | UDP | Same network, minimum latency |
-| **UART** | Serial | Production with Cube+ Orange |
+| Method                | Protocol | Best For                                           |
+| --------------------- | -------- | -------------------------------------------------- |
+| **TCP** (recommended) | TCP      | Remote connections, reliability, works through NAT |
+| **WiFi**              | UDP      | Same network, minimum latency                      |
+| **UART**              | Serial   | Production with Cube+ Orange                       |
 
 ### Connection Examples
 

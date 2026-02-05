@@ -157,6 +157,26 @@ Options:
 ./scripts/px4ctl.sh run examples/hover_rotate.py --speed 15
 ```
 
+## Example: Person Tracking
+
+The person tracker uses Hailo AI detection to follow a person:
+
+```bash
+# Start SITL first
+./scripts/px4ctl.sh start
+
+# Run person tracker with camera
+source venv_mavlink/bin/activate
+python examples/person_tracker/tracker_app.py --input /dev/video0
+
+# Control tracking via HTTP
+curl -X POST http://localhost:8080/enable   # Start tracking
+curl -X POST http://localhost:8080/disable  # Stop tracking
+curl http://localhost:8080/status           # Check status
+```
+
+See [examples/person_tracker/README.md](examples/person_tracker/README.md) for detailed documentation.
+
 ## Project Structure
 
 ```
@@ -178,6 +198,11 @@ hailo_drone_control/
 ├── examples/
 │   ├── common/             # Shared helper functions
 │   │   └── drone_helpers.py # Connection, takeoff, landing utils
+│   ├── person_tracker/     # Person-following drone controller
+│   │   ├── tracker_app.py  # Main tracking application
+│   │   ├── tracking_controller.py # PID controller
+│   │   ├── mode_manager.py # Enable/disable control
+│   │   └── README.md       # Tracking documentation
 │   ├── hover_rotate.py     # Demo flight script
 │   ├── simple_takeoff_land.py # Basic takeoff/land
 │   ├── offboard_velocity.py   # Velocity-based control
