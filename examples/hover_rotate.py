@@ -11,7 +11,7 @@ Demonstrates autonomous flight control using MAVSDK:
 Supports both WiFi (UDP) and UART (serial) connections for Raspberry Pi.
 
 Usage:
-    # WiFi mode (default - for SITL testing)
+    # TCP mode (default - for SITL testing)
     python3 hover_rotate.py --altitude 10 --rotation 360
 
     # UART mode (for production with Cube+ Orange)
@@ -28,30 +28,30 @@ Example:
     python3 hover_rotate.py -c uart --uart-device /dev/ttyAMA0
 """
 
-import argparse
 import asyncio
-import logging
 import math
 import sys
 import time
-from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, sys.path[0] + "/..")
 
-from scripts.mavlink_connection import (
-    ConnectionConfig,
-    add_connection_arguments,
-    print_connection_info,
+from examples.common import (
+    connect_drone,
+    preflight_check,
+    arm_and_takeoff,
+    land_and_disarm,
+    safe_land,
+    emergency_stop,
+    setup_logging,
+    create_argument_parser,
+    get_connection_string_from_args,
+    is_shutdown_requested,
+    setup_signal_handlers,
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S"
-)
-logger = logging.getLogger(__name__)
+# Set up logging
+logger = setup_logging()
 
 
 class HoverRotateDemo:
@@ -87,126 +87,18 @@ class HoverRotateDemo:
         self.drone = None
         self._initial_yaw = 0.0
 
-    async def connect(self, timeout: float = 30.0) -> bool:
+    async def _get_initial_yaw(self) -> float:
         """
-        Connect to the drone via MAVSDK.
-
-        Args:
-            timeout: Connection timeout in seconds.
+        Get and store the initial yaw/heading.
 
         Returns:
-            bool: True if connected successfully.
+            float: Initial yaw in degrees.
         """
-        from mavsdk import System
-
-        logger.info(f"Connecting to drone: {self.connection_string}")
-
-        self.drone = System()
-        await self.drone.connect(system_address=self.connection_string)
-
-        # Wait for connection
-        start_time = time.time()
-        async for state in self.drone.core.connection_state():
-            if state.is_connected:
-                logger.info("Connected to drone")
-                return True
-
-            if time.time() - start_time > timeout:
-                logger.error(f"Connection timeout after {timeout}s")
-                return False
-
-            await asyncio.sleep(0.5)
-
-        return False
-
-    async def preflight_check(self) -> bool:
-        """
-        Perform preflight checks.
-
-        Returns:
-            bool: True if all checks pass.
-        """
-        logger.info("Running preflight checks...")
-
-        # Check GPS
-        async for health in self.drone.telemetry.health():
-            if health.is_global_position_ok and health.is_home_position_ok:
-                logger.info("  GPS OK")
-                break
-            logger.warning("  Waiting for GPS lock...")
-            await asyncio.sleep(1)
-
-        # Check if already armed
-        async for armed in self.drone.telemetry.armed():
-            if armed:
-                logger.warning("  Drone is already armed")
-            else:
-                logger.info("  Drone disarmed")
-            break
-
-        # Get initial position
-        async for position in self.drone.telemetry.position():
-            logger.info(f"  Position: {position.latitude_deg:.6f}, {position.longitude_deg:.6f}")
-            logger.info(f"  Altitude: {position.relative_altitude_m:.1f}m")
-            break
-
-        # Get battery status
-        async for battery in self.drone.telemetry.battery():
-            logger.info(f"  Battery: {battery.remaining_percent * 100:.0f}%")
-            if battery.remaining_percent < 0.2:
-                logger.error("  Battery too low!")
-                return False
-            break
-
-        # Store initial yaw
         async for attitude in self.drone.telemetry.attitude_euler():
             self._initial_yaw = attitude.yaw_deg
             logger.info(f"  Initial heading: {self._initial_yaw:.1f} deg")
-            break
-
-        logger.info("Preflight checks complete")
-        return True
-
-    async def arm_and_takeoff(self) -> bool:
-        """
-        Arm the drone and take off to target altitude.
-
-        Returns:
-            bool: True if takeoff successful.
-        """
-        logger.info(f"Arming and taking off to {self.altitude}m...")
-
-        try:
-            # Arm the drone
-            logger.info("  Arming...")
-            await self.drone.action.arm()
-            logger.info("  Armed")
-
-            # Take off
-            logger.info(f"  Taking off to {self.altitude}m...")
-            await self.drone.action.set_takeoff_altitude(self.altitude)
-            await self.drone.action.takeoff()
-
-            # Wait for takeoff to complete
-            target_alt = self.altitude * 0.95  # 95% of target
-
-            async for position in self.drone.telemetry.position():
-                alt = position.relative_altitude_m
-                if alt >= target_alt:
-                    logger.info(f"  Reached altitude: {alt:.1f}m")
-                    break
-                logger.info(f"  Climbing: {alt:.1f}m / {self.altitude}m")
-                await asyncio.sleep(0.5)
-
-            # Stabilize
-            logger.info("  Stabilizing...")
-            await asyncio.sleep(2)
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Takeoff failed: {e}")
-            return False
+            return self._initial_yaw
+        return 0.0
 
     async def rotate(self) -> bool:
         """
@@ -215,13 +107,11 @@ class HoverRotateDemo:
         Returns:
             bool: True if rotation completed.
         """
-        logger.info(f"Starting {self.rotation} deg rotation at {self.rotation_speed} deg/s...")
+        logger.info(
+            f"Starting {self.rotation} deg rotation at {self.rotation_speed} deg/s..."
+        )
 
         try:
-            # Calculate rotation parameters
-            total_rotation_rad = math.radians(self.rotation)
-            rotation_time = abs(self.rotation) / self.rotation_speed
-
             # Get current position for hold
             current_pos = None
             async for position in self.drone.telemetry.position():
@@ -257,6 +147,10 @@ class HoverRotateDemo:
             rotated = 0.0
 
             while abs(rotated) < abs(self.rotation):
+                if is_shutdown_requested():
+                    logger.warning("  Rotation cancelled by user")
+                    break
+
                 elapsed = time.time() - start_time
                 rotated = elapsed * yaw_rate
 
@@ -271,7 +165,10 @@ class HoverRotateDemo:
                 )
 
                 progress = abs(rotated) / abs(self.rotation) * 100
-                logger.info(f"  Rotating: {abs(rotated):.1f} deg / {abs(self.rotation)} deg ({progress:.0f}%)")
+                logger.info(
+                    f"  Rotating: {abs(rotated):.1f} deg / "
+                    f"{abs(self.rotation)} deg ({progress:.0f}%)"
+                )
 
                 await asyncio.sleep(0.1)
 
@@ -302,49 +199,6 @@ class HoverRotateDemo:
                 pass
             return False
 
-    async def land(self) -> bool:
-        """
-        Land the drone safely.
-
-        Returns:
-            bool: True if landing successful.
-        """
-        logger.info("Landing...")
-
-        try:
-            await self.drone.action.land()
-
-            # Wait for landing
-            async for in_air in self.drone.telemetry.in_air():
-                if not in_air:
-                    logger.info("  Landed")
-                    break
-                await asyncio.sleep(0.5)
-
-            # Disarm
-            logger.info("  Disarming...")
-            await asyncio.sleep(2)  # Wait for motors to stop
-
-            async for armed in self.drone.telemetry.armed():
-                if not armed:
-                    logger.info("  Disarmed")
-                    break
-                await asyncio.sleep(0.5)
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Landing failed: {e}")
-            return False
-
-    async def emergency_stop(self):
-        """Emergency stop - kill motors."""
-        logger.warning("EMERGENCY STOP!")
-        try:
-            await self.drone.action.kill()
-        except Exception as e:
-            logger.error(f"Emergency stop failed: {e}")
-
     async def run(self) -> bool:
         """
         Execute the full demo sequence.
@@ -364,15 +218,19 @@ class HoverRotateDemo:
 
         try:
             # Step 1: Connect
-            if not await self.connect():
+            self.drone = await connect_drone(self.connection_string)
+            if not self.drone:
                 return False
 
             # Step 2: Preflight check
-            if not await self.preflight_check():
+            if not await preflight_check(self.drone):
                 return False
 
+            # Get initial yaw before takeoff
+            await self._get_initial_yaw()
+
             # Step 3: Arm and takeoff
-            if not await self.arm_and_takeoff():
+            if not await arm_and_takeoff(self.drone, self.altitude):
                 return False
 
             # Step 4: Rotate
@@ -380,9 +238,9 @@ class HoverRotateDemo:
                 logger.warning("Rotation incomplete, proceeding to land")
 
             # Step 5: Land
-            if not await self.land():
+            if not await land_and_disarm(self.drone):
                 logger.error("Landing failed!")
-                await self.emergency_stop()
+                await emergency_stop(self.drone)
                 return False
 
             success = True
@@ -392,71 +250,54 @@ class HoverRotateDemo:
 
         except KeyboardInterrupt:
             logger.warning("Interrupted by user")
-            await self.land()
+            if self.drone:
+                await safe_land(self.drone)
 
         except Exception as e:
             logger.error(f"Demo failed: {e}")
-            try:
-                await self.land()
-            except Exception:
-                await self.emergency_stop()
+            if self.drone:
+                try:
+                    await safe_land(self.drone)
+                except Exception:
+                    await emergency_stop(self.drone)
 
         return success
 
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="PX4 Hover & Rotate Demo - Takeoff, rotate 360 deg, and land"
+    # Set up signal handlers
+    setup_signal_handlers()
+
+    # Create parser with standard arguments
+    parser = create_argument_parser(
+        description="PX4 Hover & Rotate Demo - Takeoff, rotate 360 deg, and land",
+        add_altitude=True,
+        altitude_default=5.0,
     )
-    parser.add_argument(
-        "--altitude",
-        type=float,
-        default=5.0,
-        help="Takeoff altitude in meters (default: 5.0)"
-    )
+
+    # Add demo-specific arguments
     parser.add_argument(
         "--rotation",
         type=float,
         default=360.0,
-        help="Rotation amount in degrees (default: 360)"
+        help="Rotation amount in degrees (default: 360)",
     )
     parser.add_argument(
         "--speed",
         type=float,
         default=30.0,
-        help="Rotation speed in degrees/second (default: 30)"
+        help="Rotation speed in degrees/second (default: 30)",
     )
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose logging"
-    )
-
-    # Add connection arguments (--connection-type, --uart-*, --udp-*, --tcp-*)
-    add_connection_arguments(parser)
 
     args = parser.parse_args()
 
     if args.verbose:
+        import logging
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Build connection config from arguments
-    config = ConnectionConfig.from_args(
-        connection_type=args.connection_type,
-        uart_device=args.uart_device,
-        uart_baud=args.uart_baud,
-        udp_host=args.udp_host,
-        udp_port=args.udp_port,
-        tcp_host=args.tcp_host,
-        tcp_port=args.tcp_port,
-    )
-
-    # Print connection info
-    print_connection_info(config)
-
-    # Get connection string
-    connection_string = config.get_connection_string()
+    # Get connection string from arguments
+    connection_string = get_connection_string_from_args(args)
 
     # Create and run demo
     demo = HoverRotateDemo(

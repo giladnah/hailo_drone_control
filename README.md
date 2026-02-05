@@ -171,11 +171,19 @@ hailo_drone_control/
 │   └── params/             # PX4 parameters
 ├── scripts/
 │   ├── px4ctl.sh           # Main CLI tool
+│   ├── mavlink_connection.py # Connection config utilities
 │   ├── wait_for_mavlink.py # Health check utility
 │   ├── setup_udev.sh       # Device rules (HITL)
 │   └── post_create.sh      # Dev container setup
 ├── examples/
-│   └── hover_rotate.py     # Demo flight script
+│   ├── common/             # Shared helper functions
+│   │   └── drone_helpers.py # Connection, takeoff, landing utils
+│   ├── hover_rotate.py     # Demo flight script
+│   ├── simple_takeoff_land.py # Basic takeoff/land
+│   ├── offboard_velocity.py   # Velocity-based control
+│   ├── telemetry_monitor.py   # Real-time telemetry
+│   ├── pi_connection_test.py  # Pi connection diagnostics
+│   └── pi_simple_control.py   # Minimal Pi control
 ├── tests/
 │   ├── test_environment.py # Unit tests
 │   └── test_integration.py # Integration tests
@@ -422,7 +430,12 @@ Place scripts in `examples/` and run with:
 
 ## Example Scripts
 
-The `examples/` directory contains ready-to-use MAVSDK-Python scripts:
+The `examples/` directory contains ready-to-use MAVSDK-Python scripts. All examples share common functionality from the `examples/common/drone_helpers.py` module, which provides:
+
+- Connection management (TCP, UDP, UART)
+- Preflight checks (GPS, battery, position)
+- Takeoff/landing helpers
+- Signal handling for graceful shutdown
 
 | Script                   | Description                          |
 | ------------------------ | ------------------------------------ |

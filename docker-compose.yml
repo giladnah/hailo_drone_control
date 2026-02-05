@@ -135,9 +135,11 @@ services:
     environment:
       <<: *common-env
       SIM_MODE: dev
-      # px4-sitl forwards data to us, so we listen on our own IP
-      MAVLINK_HOST: "0.0.0.0"
-      MAVLINK_PORT: "14540"
+      # Connection settings for Python scripts (mavlink_connection.py)
+      # Use TCP to connect to mavlink-router for bidirectional comms
+      PI_CONNECTION_TYPE: "tcp"
+      PI_TCP_HOST: "px4-sitl"
+      PI_TCP_PORT: "5760"
     volumes:
       - ./examples:/workspace/examples:ro
       - ./scripts:/workspace/scripts:ro
@@ -234,9 +236,11 @@ services:
     environment:
       <<: *common-env
       SIM_MODE: dev
-      # px4-sitl forwards data to us, so we listen on our own IP
-      MAVLINK_HOST: "0.0.0.0"
-      MAVLINK_PORT: "14540"
+      # Connection settings for Python scripts (mavlink_connection.py)
+      # Use TCP to connect to mavlink-router for bidirectional comms
+      PI_CONNECTION_TYPE: "tcp"
+      PI_TCP_HOST: "px4-sitl"
+      PI_TCP_PORT: "5760"
       PYTEST_TIMEOUT: "120"
     volumes:
       - ./tests:/workspace/tests:ro

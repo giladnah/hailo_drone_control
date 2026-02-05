@@ -197,7 +197,14 @@ cmd_status() {
 
     echo ""
     log_step "Network Status"
-    docker network inspect px4-net --format '{{range .Containers}}{{.Name}}: {{.IPv4Address}}{{println}}{{end}}' 2>/dev/null || echo "Network not created"
+    # Docker Compose prefixes network names with the project name
+    local network_name
+    network_name=$(docker network ls --format '{{.Name}}' | grep -E "px4-net$" | head -1)
+    if [ -n "$network_name" ]; then
+        docker network inspect "$network_name" --format '{{range .Containers}}{{.Name}}: {{.IPv4Address}}{{println}}{{end}}' 2>/dev/null
+    else
+        echo "Network not created"
+    fi
 }
 
 cmd_logs() {

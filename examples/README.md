@@ -8,6 +8,81 @@ This directory contains example scripts demonstrating common drone control opera
 - MAVLink router configured
 - MAVSDK-Python installed (`pip install mavsdk`)
 
+## Project Structure
+
+```
+examples/
+├── common/
+│   ├── __init__.py
+│   └── drone_helpers.py     # Shared helper functions
+├── simple_takeoff_land.py   # Basic takeoff/land
+├── hover_rotate.py          # Takeoff, rotate, land
+├── mission_upload.py        # Waypoint missions
+├── offboard_velocity.py     # Velocity control
+├── telemetry_monitor.py     # Real-time monitoring
+├── geofence_setup.py        # Geofence configuration
+├── pi_connection_test.py    # Pi connection diagnostics
+├── pi_simple_control.py     # Minimal Pi control
+└── README.md                # This file
+```
+
+## Common Module
+
+The `common/` directory contains shared functionality used across all example scripts:
+
+### `drone_helpers.py`
+
+Provides reusable functions for common drone operations:
+
+| Function | Description |
+|----------|-------------|
+| `connect_drone()` | Connect to drone and wait for heartbeat |
+| `wait_for_gps()` | Wait for GPS lock |
+| `preflight_check()` | Run standard preflight checks (GPS, battery, position) |
+| `arm_and_takeoff()` | Arm and takeoff to specified altitude |
+| `land_and_disarm()` | Land and wait for disarm |
+| `safe_land()` | Emergency landing attempt |
+| `emergency_stop()` | Kill motors (emergency only!) |
+| `setup_logging()` | Configure logging |
+| `create_argument_parser()` | Create parser with standard connection options |
+| `get_connection_string_from_args()` | Build MAVSDK connection string from args |
+| `get_telemetry_snapshot()` | Get current telemetry values |
+
+### Classes
+
+| Class | Description |
+|-------|-------------|
+| `DroneConnection` | Async context manager for drone connections |
+| `TelemetrySnapshot` | Dataclass for telemetry data |
+
+### Usage Example
+
+```python
+from examples.common.drone_helpers import (
+    DroneConnection,
+    create_argument_parser,
+    get_connection_string_from_args,
+    preflight_check,
+    arm_and_takeoff,
+    land_and_disarm,
+    setup_logging,
+)
+
+async def main():
+    setup_logging()
+    parser = create_argument_parser("My Example")
+    args = parser.parse_args()
+    connection_string = get_connection_string_from_args(args)
+
+    async with DroneConnection(connection_string) as drone:
+        if not await preflight_check(drone):
+            return False
+        await arm_and_takeoff(drone, altitude=10.0)
+        # ... do something ...
+        await land_and_disarm(drone)
+    return True
+```
+
 ## Available Examples
 
 ### Basic Operations
@@ -184,12 +259,12 @@ python3 examples/simple_takeoff_land.py
 
 When creating new examples, follow these patterns:
 
-1. **Use async/await** - MAVSDK-Python is async-first
-2. **Handle connections properly** - Wait for connection state
-3. **Check health status** - Verify GPS and other sensors
-4. **Implement error handling** - Catch and handle exceptions
-5. **Support environment variables** - Use `MAVLINK_HOST` and `MAVLINK_PORT`
-6. **Add command-line arguments** - Use argparse for flexibility
+1. **Use the common module** - Import helpers from `examples.common.drone_helpers`
+2. **Use async/await** - MAVSDK-Python is async-first
+3. **Handle connections properly** - Use `DroneConnection` context manager
+4. **Check health status** - Call `preflight_check()` before flight
+5. **Implement error handling** - Use try/except with `safe_land()` fallback
+6. **Support all connection types** - Use `create_argument_parser()`
 7. **Include docstrings** - Document usage and options
 
 ### Template
@@ -205,39 +280,58 @@ Usage:
     python3 example_name.py [options]
 """
 
-import argparse
 import asyncio
-import os
 import sys
 
-from mavsdk import System
+from examples.common.drone_helpers import (
+    DroneConnection,
+    arm_and_takeoff,
+    create_argument_parser,
+    get_connection_string_from_args,
+    land_and_disarm,
+    preflight_check,
+    safe_land,
+    setup_logging,
+    setup_signal_handlers,
+)
 
 
-async def run(host: str = "localhost", port: int = 14540):
+async def run(connection_string: str, altitude: float = 5.0) -> bool:
     """Execute the example."""
-    drone = System()
-    await drone.connect(system_address=f"udp://{host}:{port}")
+    setup_signal_handlers()
 
-    # Wait for connection
-    async for state in drone.core.connection_state():
-        if state.is_connected:
-            print("Connected!")
-            break
+    async with DroneConnection(connection_string) as drone:
+        if drone is None:
+            return False
 
-    # Your code here
+        # Preflight checks
+        if not await preflight_check(drone):
+            return False
+
+        # Takeoff
+        if not await arm_and_takeoff(drone, altitude=altitude):
+            await safe_land(drone)
+            return False
+
+        try:
+            # Your code here
+            pass
+
+        finally:
+            # Always land
+            await land_and_disarm(drone)
 
     return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Example description")
-    parser.add_argument("--host", default=os.environ.get("MAVLINK_HOST", "localhost"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("MAVLINK_PORT", "14540")))
+    setup_logging()
+    parser = create_argument_parser("Example description")
+    # Add custom arguments here if needed
     args = parser.parse_args()
+    connection_string = get_connection_string_from_args(args)
 
-    success = asyncio.get_event_loop().run_until_complete(
-        run(host=args.host, port=args.port)
-    )
+    success = asyncio.run(run(connection_string, altitude=args.altitude))
     sys.exit(0 if success else 1)
 
 

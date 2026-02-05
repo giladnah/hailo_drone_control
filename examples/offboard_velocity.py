@@ -15,7 +15,7 @@ https://github.com/mavlink/MAVSDK-Python/tree/main/examples
 Supports both WiFi (UDP) and UART (serial) connections for Raspberry Pi.
 
 Usage:
-    # WiFi mode (default - for SITL testing)
+    # TCP mode (default - for SITL testing)
     python3 offboard_velocity.py --altitude 10 --speed 2.0
 
     # UART mode (for production with Cube+ Orange)
@@ -26,27 +26,98 @@ Example:
     python3 offboard_velocity.py -c uart --uart-device /dev/ttyAMA0
 """
 
-import argparse
 import asyncio
 import sys
 
 # Add parent directory to path for imports
 sys.path.insert(0, sys.path[0] + "/..")
 
-from mavsdk import System
 from mavsdk.offboard import OffboardError, VelocityNedYaw
-from scripts.mavlink_connection import (
-    ConnectionConfig,
-    add_connection_arguments,
-    print_connection_info,
+from examples.common import (
+    connect_drone,
+    wait_for_gps,
+    arm_and_takeoff,
+    land_and_disarm,
+    safe_land,
+    setup_logging,
+    create_argument_parser,
+    get_connection_string_from_args,
+    is_shutdown_requested,
+    setup_signal_handlers,
 )
 
+# Set up logging
+logger = setup_logging()
 
-async def run(
-    connection_string: str,
-    altitude: float = 10.0,
-    speed: float = 2.0,
-):
+
+async def fly_square_pattern(drone, speed: float, leg_duration: float = 5.0) -> bool:
+    """
+    Fly a square pattern using offboard velocity control.
+
+    Args:
+        drone: Connected MAVSDK System.
+        speed: Flight speed in m/s.
+        leg_duration: Duration for each leg in seconds.
+
+    Returns:
+        bool: True if pattern completed successfully.
+    """
+    # Get current heading for reference
+    current_yaw = 0.0
+    async for attitude in drone.telemetry.attitude_euler():
+        current_yaw = attitude.yaw_deg
+        logger.info(f"  Current heading: {current_yaw:.1f}")
+        break
+
+    # Start offboard mode
+    logger.info("Setting initial setpoint...")
+    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, current_yaw))
+
+    logger.info("Starting offboard mode...")
+    try:
+        await drone.offboard.start()
+    except OffboardError as e:
+        logger.error(f"Starting offboard mode failed: {e}")
+        return False
+
+    logger.info(f"Flying square pattern at {speed} m/s")
+
+    # Fly the square pattern
+    legs = [
+        ("North", speed, 0.0),
+        ("East", 0.0, speed),
+        ("South", -speed, 0.0),
+        ("West", 0.0, -speed),
+    ]
+
+    for i, (direction, north_vel, east_vel) in enumerate(legs, 1):
+        if is_shutdown_requested():
+            logger.warning("Pattern interrupted by user")
+            break
+
+        logger.info(f"  Leg {i}: Flying {direction}...")
+        await drone.offboard.set_velocity_ned(
+            VelocityNedYaw(north_vel, east_vel, 0.0, current_yaw)
+        )
+        await asyncio.sleep(leg_duration)
+
+    # Stop and hover
+    logger.info("Stopping (hover)...")
+    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, current_yaw))
+    await asyncio.sleep(2)
+
+    # Stop offboard mode
+    logger.info("Stopping offboard mode...")
+    try:
+        await drone.offboard.stop()
+    except OffboardError as e:
+        logger.error(f"Stopping offboard mode failed: {e}")
+        return False
+
+    return True
+
+
+async def run(connection_string: str, altitude: float = 10.0, speed: float = 2.0):
     """
     Execute offboard velocity control sequence.
 
@@ -58,157 +129,85 @@ async def run(
     Returns:
         bool: True if successful, False otherwise.
     """
-    drone = System()
+    logger.info("=" * 50)
+    logger.info("Offboard Velocity Control Demo")
+    logger.info("=" * 50)
+    logger.info(f"  Altitude: {altitude}m")
+    logger.info(f"  Speed: {speed} m/s")
+    logger.info("=" * 50)
 
-    print(f"Connecting to drone: {connection_string}")
-    await drone.connect(system_address=connection_string)
-
-    # Wait for connection
-    print("Waiting for drone to connect...")
-    async for state in drone.core.connection_state():
-        if state.is_connected:
-            print("-- Connected to drone!")
-            break
-
-    # Wait for GPS fix
-    print("Waiting for global position estimate...")
-    async for health in drone.telemetry.health():
-        if health.is_global_position_ok and health.is_home_position_ok:
-            print("-- Global position estimate OK")
-            break
-
-    # Arm the drone
-    print("-- Arming")
-    await drone.action.arm()
-
-    # Set takeoff altitude and take off
-    print(f"-- Taking off to {altitude}m")
-    await drone.action.set_takeoff_altitude(altitude)
-    await drone.action.takeoff()
-
-    # Wait until altitude reached
-    print(f"-- Waiting to reach {altitude}m...")
-    async for position in drone.telemetry.position():
-        if position.relative_altitude_m >= altitude * 0.95:
-            print(f"-- Reached altitude: {position.relative_altitude_m:.1f}m")
-            break
-
-    # Stabilize
-    print("-- Stabilizing...")
-    await asyncio.sleep(3)
-
-    # Get current heading for reference
-    current_yaw = 0.0
-    async for attitude in drone.telemetry.attitude_euler():
-        current_yaw = attitude.yaw_deg
-        print(f"-- Current heading: {current_yaw:.1f}")
-        break
-
-    # Start offboard mode
-    print("-- Setting initial setpoint")
-    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, current_yaw))
-
-    print("-- Starting offboard mode")
-    try:
-        await drone.offboard.start()
-    except OffboardError as e:
-        print(f"Starting offboard mode failed: {e}")
-        print("-- Landing")
-        await drone.action.land()
+    # Connect to drone
+    drone = await connect_drone(connection_string)
+    if not drone:
         return False
 
-    # Fly a square pattern using velocity commands
-    # Duration for each leg (seconds)
-    leg_duration = 5.0
-
-    print(f"-- Flying square pattern at {speed} m/s")
-
-    # Leg 1: North (positive X in NED)
-    print("   Leg 1: Flying North...")
-    await drone.offboard.set_velocity_ned(VelocityNedYaw(speed, 0.0, 0.0, current_yaw))
-    await asyncio.sleep(leg_duration)
-
-    # Leg 2: East (positive Y in NED)
-    print("   Leg 2: Flying East...")
-    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, speed, 0.0, current_yaw))
-    await asyncio.sleep(leg_duration)
-
-    # Leg 3: South (negative X in NED)
-    print("   Leg 3: Flying South...")
-    await drone.offboard.set_velocity_ned(VelocityNedYaw(-speed, 0.0, 0.0, current_yaw))
-    await asyncio.sleep(leg_duration)
-
-    # Leg 4: West (negative Y in NED)
-    print("   Leg 4: Flying West...")
-    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, -speed, 0.0, current_yaw))
-    await asyncio.sleep(leg_duration)
-
-    # Stop and hover
-    print("-- Stopping (hover)")
-    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, current_yaw))
-    await asyncio.sleep(2)
-
-    # Stop offboard mode
-    print("-- Stopping offboard mode")
     try:
-        await drone.offboard.stop()
-    except OffboardError as e:
-        print(f"Stopping offboard mode failed: {e}")
+        # Wait for GPS
+        if not await wait_for_gps(drone):
+            return False
 
-    # Land
-    print("-- Landing")
-    await drone.action.land()
+        # Arm and takeoff
+        if not await arm_and_takeoff(drone, altitude):
+            return False
 
-    # Wait until landed
-    print("-- Waiting for landing...")
-    async for in_air in drone.telemetry.in_air():
-        if not in_air:
-            print("-- Landed!")
-            break
+        # Stabilize before offboard
+        logger.info("Stabilizing before offboard mode...")
+        await asyncio.sleep(3)
 
-    print("-- Offboard velocity demo complete!")
-    return True
+        # Fly square pattern
+        if not await fly_square_pattern(drone, speed):
+            logger.warning("Pattern incomplete, proceeding to land")
+
+        # Land
+        if not await land_and_disarm(drone):
+            logger.error("Landing failed!")
+            await safe_land(drone)
+            return False
+
+        logger.info("=" * 50)
+        logger.info("Offboard velocity demo complete!")
+        logger.info("=" * 50)
+        return True
+
+    except KeyboardInterrupt:
+        logger.warning("Interrupted by user")
+        await safe_land(drone)
+        return False
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        await safe_land(drone)
+        return False
 
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Offboard velocity control example using MAVSDK"
+    # Set up signal handlers
+    setup_signal_handlers()
+
+    # Create parser with standard arguments
+    parser = create_argument_parser(
+        description="Offboard velocity control example using MAVSDK",
+        add_altitude=True,
+        altitude_default=10.0,
     )
-    parser.add_argument(
-        "--altitude",
-        type=float,
-        default=10.0,
-        help="Takeoff altitude in meters (default: 10.0)"
-    )
+
+    # Add demo-specific arguments
     parser.add_argument(
         "--speed",
         type=float,
         default=2.0,
-        help="Flight speed in m/s (default: 2.0)"
+        help="Flight speed in m/s (default: 2.0)",
     )
-
-    # Add connection arguments (--connection-type, --uart-*, --udp-*, --tcp-*)
-    add_connection_arguments(parser)
 
     args = parser.parse_args()
 
-    # Build connection config from arguments
-    config = ConnectionConfig.from_args(
-        connection_type=args.connection_type,
-        uart_device=args.uart_device,
-        uart_baud=args.uart_baud,
-        udp_host=args.udp_host,
-        udp_port=args.udp_port,
-        tcp_host=args.tcp_host,
-        tcp_port=args.tcp_port,
-    )
+    if args.verbose:
+        import logging
+        logging.getLogger().setLevel(logging.DEBUG)
 
-    # Print connection info
-    print_connection_info(config)
-
-    # Get connection string
-    connection_string = config.get_connection_string()
+    # Get connection string from arguments
+    connection_string = get_connection_string_from_args(args)
 
     # Run the async function
     success = asyncio.get_event_loop().run_until_complete(

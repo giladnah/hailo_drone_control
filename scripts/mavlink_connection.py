@@ -214,7 +214,9 @@ class ConnectionConfig:
         if self.connection_type == ConnectionType.UART:
             return f"serial://{self.uart_device}:{self.uart_baud}"
         elif self.connection_type == ConnectionType.TCP:
-            return f"tcp://{self.tcp_host}:{self.tcp_port}"
+            # Use tcpout:// to connect as a client to a TCP server
+            # (tcp:// is deprecated in MAVSDK)
+            return f"tcpout://{self.tcp_host}:{self.tcp_port}"
         else:
             # Use udpin:// to listen for incoming UDP packets
             # (udp:// is deprecated in MAVSDK)
@@ -281,7 +283,8 @@ def get_connection_string(
     elif conn_type == "tcp":
         host = host or DEFAULTS["tcp_host"]
         port = port or DEFAULTS["tcp_port"]
-        return f"tcp://{host}:{port}"
+        # Use tcpout:// to connect as a client (tcp:// is deprecated)
+        return f"tcpout://{host}:{port}"
 
     else:
         raise ValueError(
