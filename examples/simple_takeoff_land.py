@@ -12,17 +12,17 @@ A minimal example demonstrating the core MAVSDK workflow:
 This example follows official MAVSDK-Python patterns from:
 https://github.com/mavlink/MAVSDK-Python/tree/main/examples
 
-Supports both WiFi (UDP) and UART (serial) connections for Raspberry Pi.
+Supports TCP (default), UDP, and UART (serial) connections.
 
 Usage:
-    # WiFi mode (default - for SITL testing)
+    # TCP mode (default - recommended for SITL testing)
     python3 simple_takeoff_land.py --altitude 10
 
     # UART mode (for production with Cube+ Orange)
     python3 simple_takeoff_land.py -c uart --altitude 10
 
 Example:
-    python3 simple_takeoff_land.py --altitude 10 --wifi-host 192.168.1.100
+    python3 simple_takeoff_land.py --altitude 10 --tcp-host 192.168.1.100
     python3 simple_takeoff_land.py -c uart --uart-device /dev/ttyAMA0
 """
 
@@ -248,7 +248,7 @@ def main():
         help="Takeoff altitude in meters (default: 5.0)"
     )
 
-    # Add connection arguments (--connection-type, --uart-*, --wifi-*)
+    # Add connection arguments (--connection-type, --uart-*, --udp-*, --tcp-*)
     add_connection_arguments(parser)
 
     args = parser.parse_args()
@@ -258,8 +258,8 @@ def main():
         connection_type=args.connection_type,
         uart_device=args.uart_device,
         uart_baud=args.uart_baud,
-        wifi_host=args.wifi_host,
-        wifi_port=args.wifi_port,
+        udp_host=args.udp_host,
+        udp_port=args.udp_port,
         tcp_host=args.tcp_host,
         tcp_port=args.tcp_port,
     )

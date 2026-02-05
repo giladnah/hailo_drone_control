@@ -19,6 +19,7 @@
 #
 # Options:
 #   --skip-uart     Skip UART configuration (WiFi only)
+#   --skip-upgrade  Skip system upgrade (apt upgrade)
 #   --skip-reboot   Don't prompt for reboot
 #   --help          Show this help message
 #
@@ -42,6 +43,7 @@ VENV_DIR="$REPO_ROOT/venv_mavlink"
 
 # Flags
 SKIP_UART=false
+SKIP_UPGRADE=false
 SKIP_REBOOT=false
 
 # Parse arguments
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --skip-uart)
             SKIP_UART=true
+            shift
+            ;;
+        --skip-upgrade)
+            SKIP_UPGRADE=true
             shift
             ;;
         --skip-reboot)
@@ -92,7 +98,11 @@ check_raspberry_pi() {
         log_info "Detected: $MODEL"
     else
         log_warn "Could not detect Raspberry Pi model"
-        log_warn "This script is designed for Raspberry Pi"
+        log_warn "This script is designed for Raspberry Pi but can run on Ubuntu/Linux for development"
+        echo ""
+        log_info "For Ubuntu/Linux development, run with:"
+        echo -e "  ${BLUE}$0 --skip-uart --skip-upgrade --skip-reboot${NC}"
+        echo ""
         read -p "Continue anyway? (y/N) " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -131,7 +141,13 @@ update_system() {
     log_step "Updating system packages..."
 
     sudo apt-get update
-    sudo apt-get upgrade -y
+
+    if [ "$SKIP_UPGRADE" = true ]; then
+        log_info "Skipping system upgrade (--skip-upgrade)"
+    else
+        log_info "Upgrading system packages..."
+        sudo apt-get upgrade -y
+    fi
 }
 
 # Install required packages
@@ -223,7 +239,8 @@ install_python_packages() {
 install_hailo_apps() {
     log_step "Installing hailo-apps-internal..."
 
-    HAILO_APPS_DIR="$HOME/hailo-apps-internal"
+    # Clone into repo directory so it's part of the workspace
+    HAILO_APPS_DIR="$REPO_ROOT/hailo-apps-internal"
     HAILO_APPS_REPO="https://github.com/hailocs/hailo-apps-internal.git"
 
     # Check if repo already exists
@@ -247,7 +264,7 @@ install_hailo_apps() {
             log_error "Failed to clone hailo-apps-internal repository"
             return 1
         fi
-        log_info "Repository cloned successfully"
+        log_info "Repository cloned successfully to $HAILO_APPS_DIR"
     fi
 
     # Run install.sh
@@ -295,13 +312,7 @@ install_hailo_apps() {
     # Deactivate venv
     deactivate
 
-    # Note about Cursor workspace
-    log_info ""
-    log_info "To add hailo-apps-internal to Cursor workspace:"
-    log_info "  1. Open Cursor"
-    log_info "  2. File -> Add Folder to Workspace..."
-    log_info "  3. Select: $HAILO_APPS_DIR"
-    log_info ""
+    log_info "hailo-apps-internal is now part of the workspace at $HAILO_APPS_DIR"
 }
 
 # Configure serial port permissions
@@ -586,9 +597,13 @@ print_summary() {
 
     echo ""
     echo -e "${GREEN}======================================${NC}"
-    echo -e "${GREEN}  Raspberry Pi MAVLink Setup Complete ${NC}"
+    echo -e "${GREEN}      MAVLink Setup Complete          ${NC}"
     echo -e "${GREEN}======================================${NC}"
     echo ""
+    if [ "$SKIP_UPGRADE" = true ]; then
+        echo -e "${YELLOW}Note: System upgrade was skipped (--skip-upgrade)${NC}"
+        echo ""
+    fi
     echo "Virtual Environment:"
     echo "  Location: $VENV_DIR"
     echo "  Includes: MAVSDK-Python, pyserial, hailo-apps-internal"
@@ -601,10 +616,10 @@ print_summary() {
     echo "  - hailo-apps-internal (in venv)"
     echo ""
     echo "hailo-apps-internal:"
-    echo "  Location: ~/hailo-apps-internal"
+    echo "  Location: $REPO_ROOT/hailo-apps-internal"
     echo "  Repository: https://github.com/hailocs/hailo-apps-internal"
     echo "  Installed via: install.sh + pip install -e ."
-    echo "  Note: Add to Cursor workspace via File -> Add Folder to Workspace..."
+    echo "  Note: Already part of the workspace (no need to add separately)"
     echo ""
 
     if [ "$SKIP_UART" = false ]; then
@@ -677,7 +692,7 @@ prompt_reboot() {
 main() {
     echo ""
     echo -e "${BLUE}======================================${NC}"
-    echo -e "${BLUE}  Raspberry Pi MAVLink Setup Script  ${NC}"
+    echo -e "${BLUE}      MAVLink Setup Script            ${NC}"
     echo -e "${BLUE}======================================${NC}"
     echo ""
 

@@ -21,10 +21,10 @@ Options:
     --altitude METERS   Takeoff altitude (default: 5.0)
     --rotation DEGREES  Rotation amount (default: 360)
     --speed DEG/SEC     Rotation speed (default: 30)
-    -c, --connection-type  Connection type: uart or wifi (default: wifi)
+    -c, --connection-type  Connection type: uart, udp, or tcp (default: tcp)
 
 Example:
-    python3 hover_rotate.py --altitude 10 --rotation 720 --wifi-host 192.168.1.100
+    python3 hover_rotate.py --altitude 10 --rotation 720 --tcp-host 192.168.1.100
     python3 hover_rotate.py -c uart --uart-device /dev/ttyAMA0
 """
 
@@ -433,7 +433,7 @@ def main():
         help="Enable verbose logging"
     )
 
-    # Add connection arguments (--connection-type, --uart-*, --wifi-*)
+    # Add connection arguments (--connection-type, --uart-*, --udp-*, --tcp-*)
     add_connection_arguments(parser)
 
     args = parser.parse_args()
@@ -446,8 +446,8 @@ def main():
         connection_type=args.connection_type,
         uart_device=args.uart_device,
         uart_baud=args.uart_baud,
-        wifi_host=args.wifi_host,
-        wifi_port=args.wifi_port,
+        udp_host=args.udp_host,
+        udp_port=args.udp_port,
         tcp_host=args.tcp_host,
         tcp_port=args.tcp_port,
     )

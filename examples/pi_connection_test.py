@@ -2,19 +2,19 @@
 """
 pi_connection_test.py - Comprehensive MAVLink Connection Test for Raspberry Pi
 
-Tests MAVLink connectivity via UART or WiFi and displays diagnostic information.
+Tests MAVLink connectivity via UART, UDP, or TCP and displays diagnostic information.
 Designed to verify the Raspberry Pi can communicate with PX4 autopilots.
 
 Features:
-- Tests both UART and WiFi connections
+- Tests UART, UDP, and TCP connections
 - Verifies heartbeat reception
 - Displays basic telemetry
 - Checks bidirectional communication
 - Provides connection diagnostics
 
 Usage:
-    # WiFi mode (testing with SITL)
-    python3 pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+    # TCP mode (default - testing with SITL)
+    python3 pi_connection_test.py --tcp-host 192.168.1.100
 
     # UART mode (production with Cube+ Orange)
     python3 pi_connection_test.py -c uart
@@ -23,7 +23,7 @@ Usage:
     python3 pi_connection_test.py -c uart --full-diagnostic
 
 Example:
-    python3 pi_connection_test.py -c wifi --wifi-host 192.168.1.100 --timeout 60
+    python3 pi_connection_test.py --tcp-host 192.168.1.100 --timeout 60
     python3 pi_connection_test.py -c uart --uart-device /dev/ttyAMA0
 """
 
@@ -321,10 +321,15 @@ def run_pre_checks(config: ConnectionConfig) -> bool:
             print("  None found")
 
     else:
-        # WiFi checks
-        print(f"\nWiFi configuration:")
-        print(f"  Host: {config.wifi_host}")
-        print(f"  Port: {config.wifi_port}")
+        # UDP/TCP checks
+        if config.connection_type.value == "tcp":
+            print(f"\nTCP configuration:")
+            print(f"  Host: {config.tcp_host}")
+            print(f"  Port: {config.tcp_port}")
+        else:
+            print(f"\nUDP configuration:")
+            print(f"  Host: {config.udp_host}")
+            print(f"  Port: {config.udp_port}")
 
         # Validate config
         validation = validate_config(config)
@@ -372,8 +377,8 @@ def main():
         connection_type=args.connection_type,
         uart_device=args.uart_device,
         uart_baud=args.uart_baud,
-        wifi_host=args.wifi_host,
-        wifi_port=args.wifi_port,
+        udp_host=args.udp_host,
+        udp_port=args.udp_port,
         tcp_host=args.tcp_host,
         tcp_port=args.tcp_port,
     )

@@ -6,24 +6,24 @@ A minimal example showing how to connect and control a drone from Raspberry Pi.
 Demonstrates the core workflow without complex logic.
 
 Features:
-- Connect via UART or WiFi
+- Connect via UART, UDP, or TCP
 - Subscribe to telemetry
 - Execute simple commands (arm, takeoff, land)
 - Works with both SITL and real hardware
 
 Usage:
-    # WiFi mode (testing with SITL)
-    python3 pi_simple_control.py -c wifi --wifi-host 192.168.1.100
+    # TCP mode (default - testing with SITL)
+    python3 pi_simple_control.py --tcp-host 192.168.1.100
 
     # UART mode (production with Cube+ Orange)
     python3 pi_simple_control.py -c uart
 
     # Monitor telemetry only (no flight)
-    python3 pi_simple_control.py -c wifi --wifi-host 192.168.1.100 --monitor-only
+    python3 pi_simple_control.py --tcp-host 192.168.1.100 --monitor-only
 
 Example:
     python3 pi_simple_control.py -c uart --altitude 5
-    python3 pi_simple_control.py -c wifi --wifi-host 192.168.1.100 --monitor-only --duration 60
+    python3 pi_simple_control.py --tcp-host 192.168.1.100 --monitor-only --duration 60
 """
 
 import argparse
@@ -324,8 +324,8 @@ def main():
         connection_type=args.connection_type,
         uart_device=args.uart_device,
         uart_baud=args.uart_baud,
-        wifi_host=args.wifi_host,
-        wifi_port=args.wifi_port,
+        udp_host=args.udp_host,
+        udp_port=args.udp_port,
         tcp_host=args.tcp_host,
         tcp_port=args.tcp_port,
     )

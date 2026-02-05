@@ -2,33 +2,33 @@
 """
 mavlink_connection.py - MAVLink Connection Helper Utility
 
-Provides a unified interface for connecting to MAVLink via TCP, WiFi (UDP), or UART.
-Supports both production (UART to TELEM2) and testing (TCP/WiFi to SITL) modes.
+Provides a unified interface for connecting to MAVLink via TCP, UDP, or UART.
+Supports both production (UART to TELEM2) and testing (TCP/UDP to SITL) modes.
 
 Connection Types:
-    - tcp: TCP connection (RECOMMENDED for remote connections)
-    - wifi: UDP connection (lower latency, same network)
+    - tcp: TCP connection (DEFAULT - recommended for most use cases)
+    - udp: UDP connection (advanced - lower latency, requires network config)
     - uart: Serial connection (production - Cube+ Orange TELEM2)
 
-TCP vs WiFi (UDP):
-    TCP is recommended for Raspberry Pi connections because:
+TCP vs UDP:
+    TCP is the default and recommended for most connections because:
     - Reliable: Guaranteed packet delivery (no lost commands)
-    - NAT-friendly: Pi connects TO server, works through routers
-    - Simple: No need to configure SITL with Pi's IP address
+    - NAT-friendly: Client connects TO server, works through routers
+    - Simple: No need to configure SITL with client's IP address
 
-    WiFi (UDP) may be preferred when:
-    - Minimum latency is critical
-    - Pi and SITL are on the same local network
-    - SITL is configured to push to Pi's IP
+    UDP may be preferred when:
+    - Minimum latency is critical (no TCP handshake overhead)
+    - Direct network connection (same subnet, no NAT)
+    - Specific MAVLink router configurations require it
 
 Usage:
     from scripts.mavlink_connection import get_connection_string, ConnectionConfig
 
-    # TCP mode (recommended for testing - SITL)
+    # TCP mode (default - recommended for SITL and remote connections)
     conn_str = get_connection_string("tcp", host="192.168.1.100", port=5760)
 
-    # WiFi/UDP mode (same network, low latency)
-    conn_str = get_connection_string("wifi", host="192.168.1.100", port=14540)
+    # UDP mode (advanced - low latency, requires proper network setup)
+    conn_str = get_connection_string("udp", host="0.0.0.0", port=14540)
 
     # UART mode (production - Cube+ Orange TELEM2)
     conn_str = get_connection_string("uart", device="/dev/ttyAMA0", baud=57600)
@@ -38,15 +38,16 @@ Usage:
     conn_str = config.get_connection_string()
 
 Environment Variables:
-    PI_CONNECTION_TYPE  - Connection type: "tcp", "wifi", or "uart" (default: wifi)
+    PI_CONNECTION_TYPE  - Connection type: "tcp", "udp", or "uart" (default: tcp)
     PI_TCP_HOST         - TCP host IP (default: localhost)
     PI_TCP_PORT         - TCP port (default: 5760)
-    PI_WIFI_HOST        - WiFi (UDP) host IP (default: localhost)
-    PI_WIFI_PORT        - WiFi (UDP) port (default: 14540)
+    PI_UDP_HOST         - UDP listen address (default: 0.0.0.0)
+    PI_UDP_PORT         - UDP port (default: 14540)
     PI_UART_DEVICE      - Serial device path (default: /dev/ttyAMA0)
     PI_UART_BAUD        - Serial baud rate (default: 57600)
 """
 
+import argparse
 import glob
 import os
 import sys
@@ -58,17 +59,17 @@ from typing import List, Optional
 class ConnectionType(Enum):
     """MAVLink connection types."""
     UART = "uart"
-    WIFI = "wifi"
+    UDP = "udp"
     TCP = "tcp"
 
 
 # Default configuration values
 DEFAULTS = {
-    "connection_type": "wifi",
+    "connection_type": "tcp",  # TCP is default - most reliable for SITL
     "uart_device": "/dev/ttyAMA0",
     "uart_baud": 57600,  # Standard for TELEM2
-    "wifi_host": "localhost",
-    "wifi_port": 14540,
+    "udp_host": "0.0.0.0",  # Listen on all interfaces
+    "udp_port": 14540,
     "tcp_host": "localhost",
     "tcp_port": 5760,
 }
@@ -89,19 +90,19 @@ class ConnectionConfig:
     MAVLink connection configuration.
 
     Attributes:
-        connection_type: Type of connection (uart, wifi, or tcp).
+        connection_type: Type of connection (uart, udp, or tcp).
         uart_device: Serial device path for UART mode.
         uart_baud: Baud rate for UART mode.
-        wifi_host: Host IP/hostname for WiFi mode.
-        wifi_port: UDP port for WiFi mode.
+        udp_host: Listen address for UDP mode (use 0.0.0.0 for all interfaces).
+        udp_port: UDP port for UDP mode.
         tcp_host: Host IP/hostname for TCP mode.
         tcp_port: TCP port for TCP mode.
     """
     connection_type: ConnectionType
     uart_device: str = DEFAULTS["uart_device"]
     uart_baud: int = DEFAULTS["uart_baud"]
-    wifi_host: str = DEFAULTS["wifi_host"]
-    wifi_port: int = DEFAULTS["wifi_port"]
+    udp_host: str = DEFAULTS["udp_host"]
+    udp_port: int = DEFAULTS["udp_port"]
     tcp_host: str = DEFAULTS["tcp_host"]
     tcp_port: int = DEFAULTS["tcp_port"]
 
@@ -121,8 +122,8 @@ class ConnectionConfig:
         try:
             conn_type = ConnectionType(conn_type_str)
         except ValueError:
-            print(f"Warning: Unknown connection type '{conn_type_str}', using wifi")
-            conn_type = ConnectionType.WIFI
+            print(f"Warning: Unknown connection type '{conn_type_str}', using tcp")
+            conn_type = ConnectionType.TCP
 
         return cls(
             connection_type=conn_type,
@@ -134,13 +135,13 @@ class ConnectionConfig:
                 "PI_UART_BAUD",
                 DEFAULTS["uart_baud"]
             )),
-            wifi_host=os.environ.get(
-                "PI_WIFI_HOST",
-                DEFAULTS["wifi_host"]
+            udp_host=os.environ.get(
+                "PI_UDP_HOST",
+                DEFAULTS["udp_host"]
             ),
-            wifi_port=int(os.environ.get(
-                "PI_WIFI_PORT",
-                DEFAULTS["wifi_port"]
+            udp_port=int(os.environ.get(
+                "PI_UDP_PORT",
+                DEFAULTS["udp_port"]
             )),
             tcp_host=os.environ.get(
                 "PI_TCP_HOST",
@@ -158,8 +159,8 @@ class ConnectionConfig:
         connection_type: str = None,
         uart_device: str = None,
         uart_baud: int = None,
-        wifi_host: str = None,
-        wifi_port: int = None,
+        udp_host: str = None,
+        udp_port: int = None,
         tcp_host: str = None,
         tcp_port: int = None,
     ) -> "ConnectionConfig":
@@ -167,11 +168,11 @@ class ConnectionConfig:
         Create configuration from arguments with environment fallback.
 
         Args:
-            connection_type: Connection type string ("uart", "wifi", or "tcp").
+            connection_type: Connection type string ("uart", "udp", or "tcp").
             uart_device: Serial device path.
             uart_baud: Serial baud rate.
-            wifi_host: WiFi host IP.
-            wifi_port: WiFi UDP port.
+            udp_host: UDP listen address.
+            udp_port: UDP port.
             tcp_host: TCP host IP.
             tcp_port: TCP port.
 
@@ -192,10 +193,10 @@ class ConnectionConfig:
             config.uart_device = uart_device
         if uart_baud is not None:
             config.uart_baud = uart_baud
-        if wifi_host is not None:
-            config.wifi_host = wifi_host
-        if wifi_port is not None:
-            config.wifi_port = wifi_port
+        if udp_host is not None:
+            config.udp_host = udp_host
+        if udp_port is not None:
+            config.udp_port = udp_port
         if tcp_host is not None:
             config.tcp_host = tcp_host
         if tcp_port is not None:
@@ -215,7 +216,9 @@ class ConnectionConfig:
         elif self.connection_type == ConnectionType.TCP:
             return f"tcp://{self.tcp_host}:{self.tcp_port}"
         else:
-            return f"udp://{self.wifi_host}:{self.wifi_port}"
+            # Use udpin:// to listen for incoming UDP packets
+            # (udp:// is deprecated in MAVSDK)
+            return f"udpin://{self.udp_host}:{self.udp_port}"
 
     def __str__(self) -> str:
         """String representation showing current settings."""
@@ -224,11 +227,11 @@ class ConnectionConfig:
         elif self.connection_type == ConnectionType.TCP:
             return f"TCP: {self.tcp_host}:{self.tcp_port}"
         else:
-            return f"WiFi: {self.wifi_host}:{self.wifi_port}"
+            return f"UDP: {self.udp_host}:{self.udp_port}"
 
 
 def get_connection_string(
-    connection_type: str = "wifi",
+    connection_type: str = "tcp",
     device: str = None,
     baud: int = None,
     host: str = None,
@@ -240,11 +243,11 @@ def get_connection_string(
     This is a convenience function for simple use cases.
 
     Args:
-        connection_type: "uart", "wifi", or "tcp" (default: wifi).
+        connection_type: "uart", "udp", or "tcp" (default: tcp).
         device: Serial device path for UART (default: /dev/ttyAMA0).
         baud: Baud rate for UART (default: 57600).
-        host: Host IP for WiFi/TCP (default: localhost).
-        port: Port for WiFi (UDP 14540) or TCP (5760).
+        host: Host IP/address for UDP/TCP (default varies by type).
+        port: Port for UDP (14540) or TCP (5760).
 
     Returns:
         str: MAVSDK-compatible connection string.
@@ -256,8 +259,8 @@ def get_connection_string(
         >>> get_connection_string("uart", device="/dev/ttyUSB0", baud=921600)
         'serial:///dev/ttyUSB0:921600'
 
-        >>> get_connection_string("wifi", host="192.168.1.100")
-        'udp://192.168.1.100:14540'
+        >>> get_connection_string("udp", host="0.0.0.0")
+        'udpin://0.0.0.0:14540'
 
         >>> get_connection_string("tcp", host="192.168.1.100")
         'tcp://192.168.1.100:5760'
@@ -269,10 +272,11 @@ def get_connection_string(
         baud = baud or DEFAULTS["uart_baud"]
         return f"serial://{device}:{baud}"
 
-    elif conn_type == "wifi" or conn_type == "udp":
-        host = host or DEFAULTS["wifi_host"]
-        port = port or DEFAULTS["wifi_port"]
-        return f"udp://{host}:{port}"
+    elif conn_type == "udp":
+        host = host or DEFAULTS["udp_host"]
+        port = port or DEFAULTS["udp_port"]
+        # Use udpin:// to listen for incoming packets (udp:// is deprecated)
+        return f"udpin://{host}:{port}"
 
     elif conn_type == "tcp":
         host = host or DEFAULTS["tcp_host"]
@@ -282,7 +286,7 @@ def get_connection_string(
     else:
         raise ValueError(
             f"Unknown connection type: {connection_type}. "
-            "Use 'uart', 'wifi', or 'tcp'."
+            "Use 'uart', 'udp', or 'tcp'."
         )
 
 
@@ -398,15 +402,15 @@ def validate_config(config: ConnectionConfig) -> dict:
             )
 
     else:
-        # Validate WiFi settings
-        if not config.wifi_host:
+        # Validate UDP settings
+        if not config.udp_host:
             result["valid"] = False
-            result["errors"].append("WiFi host not specified")
+            result["errors"].append("UDP host not specified")
 
-        if config.wifi_port < 1 or config.wifi_port > 65535:
+        if config.udp_port < 1 or config.udp_port > 65535:
             result["valid"] = False
             result["errors"].append(
-                f"Invalid port number: {config.wifi_port}"
+                f"Invalid UDP port number: {config.udp_port}"
             )
 
     return result
@@ -433,10 +437,10 @@ def add_connection_arguments(parser) -> None:
 
     conn_group.add_argument(
         "--connection-type", "-c",
-        choices=["uart", "wifi", "tcp"],
+        choices=["uart", "udp", "tcp"],
         default=None,
-        help="Connection type: uart (serial), wifi (UDP), or tcp. "
-             "Default: PI_CONNECTION_TYPE env or 'wifi'"
+        help="Connection type: uart (serial), udp (advanced), or tcp (default). "
+             "Default: PI_CONNECTION_TYPE env or 'tcp'"
     )
 
     conn_group.add_argument(
@@ -455,18 +459,18 @@ def add_connection_arguments(parser) -> None:
     )
 
     conn_group.add_argument(
-        "--wifi-host",
+        "--udp-host",
         default=None,
-        help=f"Host IP for WiFi mode. "
-             f"Default: PI_WIFI_HOST env or '{DEFAULTS['wifi_host']}'"
+        help=f"Listen address for UDP mode (use 0.0.0.0 for all interfaces). "
+             f"Default: PI_UDP_HOST env or '{DEFAULTS['udp_host']}'"
     )
 
     conn_group.add_argument(
-        "--wifi-port",
+        "--udp-port",
         type=int,
         default=None,
-        help=f"UDP port for WiFi mode. "
-             f"Default: PI_WIFI_PORT env or {DEFAULTS['wifi_port']}"
+        help=f"UDP port for UDP mode. "
+             f"Default: PI_UDP_PORT env or {DEFAULTS['udp_port']}"
     )
 
     conn_group.add_argument(
@@ -516,8 +520,8 @@ def print_connection_info(config: ConnectionConfig) -> None:
         print(f"  Host: {config.tcp_host}")
         print(f"  Port: {config.tcp_port}")
     else:
-        print(f"  Host: {config.wifi_host}")
-        print(f"  Port: {config.wifi_port}")
+        print(f"  Listen Address: {config.udp_host}")
+        print(f"  Port: {config.udp_port}")
 
     print(f"\n  Connection String: {config.get_connection_string()}")
     print("=" * 50)
@@ -525,8 +529,6 @@ def print_connection_info(config: ConnectionConfig) -> None:
 
 def main():
     """CLI for testing connection configuration."""
-    import argparse
-
     parser = argparse.ArgumentParser(
         description="MAVLink Connection Helper - Test and validate connection settings"
     )
@@ -566,8 +568,10 @@ def main():
         connection_type=args.connection_type,
         uart_device=args.uart_device,
         uart_baud=args.uart_baud,
-        wifi_host=args.wifi_host,
-        wifi_port=args.wifi_port,
+        udp_host=args.udp_host,
+        udp_port=args.udp_port,
+        tcp_host=args.tcp_host,
+        tcp_port=args.tcp_port,
     )
 
     # Print configuration

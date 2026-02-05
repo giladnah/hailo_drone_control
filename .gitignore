@@ -33,6 +33,9 @@ Thumbs.db
 # PX4 artifacts (if cloned locally)
 PX4-Autopilot/
 
+# Hailo apps (cloned by setup_pi.sh)
+hailo-apps-internal/
+
 # Firmware builds
 *.px4
 *.bin
