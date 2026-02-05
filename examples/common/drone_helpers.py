@@ -415,10 +415,16 @@ async def arm_and_takeoff(
         await drone.action.arm()
         logger.info("  Armed")
 
+        # Brief delay to let simulator stabilize
+        await asyncio.sleep(1.0)
+
         # Set takeoff altitude and take off
         await drone.action.set_takeoff_altitude(altitude)
         logger.info(f"  Taking off to {altitude}m...")
         await drone.action.takeoff()
+
+        # Brief delay to let takeoff command propagate
+        await asyncio.sleep(2.0)
 
         # Wait for altitude
         target_alt = altitude * altitude_tolerance
@@ -460,8 +466,9 @@ async def arm_and_takeoff(
                 logger.warning("  Takeoff cancelled by user")
                 return False
 
-            logger.info(f"  Climbing: {current_alt:.1f}m / {altitude}m")
-            await asyncio.sleep(0.5)
+            # Critical: yield immediately to allow other async tasks to run
+            # Using sleep(0) instead of sleep(0.5) prevents telemetry starvation
+            await asyncio.sleep(0)
 
         # Stabilize
         logger.info("  Stabilizing...")
@@ -504,7 +511,8 @@ async def land_and_disarm(
                 logger.warning(f"  Landing timeout after {timeout}s")
                 break
 
-            await asyncio.sleep(0.5)
+            # Critical: yield immediately to allow other tasks to run
+            await asyncio.sleep(0)
 
         # Wait for disarm
         logger.info("  Waiting for disarm...")
@@ -514,7 +522,8 @@ async def land_and_disarm(
             if not armed:
                 logger.info("  Disarmed")
                 break
-            await asyncio.sleep(0.5)
+            # Critical: yield immediately
+            await asyncio.sleep(0)
 
         return True
 
@@ -551,7 +560,8 @@ async def safe_land(drone: "System", timeout: float = 30.0) -> bool:
                 logger.warning(f"  Landing timeout, but command was sent")
                 return True
 
-            await asyncio.sleep(0.5)
+            # Critical: yield immediately to allow other tasks to run
+            await asyncio.sleep(0)
 
         return True
 

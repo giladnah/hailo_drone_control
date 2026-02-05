@@ -254,6 +254,23 @@ Install with:
 pip install mavsdk aiohttp
 ```
 
+## Technical Notes
+
+### Telemetry Handling
+
+The `mode_manager.py` uses background telemetry monitoring for RC channel detection.
+All telemetry loops use `asyncio.sleep(0)` to prevent the "telemetry starvation" issue
+where command execution (arm, takeoff) gets blocked.
+
+If you modify the telemetry reading code, always use:
+```python
+async for data in drone.telemetry.some_stream():
+    # Process data
+    await asyncio.sleep(0)  # Yield immediately - DON'T use sleep(0.5)!
+```
+
+See the main [README.md](../../README.md) Troubleshooting section for details.
+
 ## License
 
 See project root LICENSE file.

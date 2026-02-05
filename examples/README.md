@@ -14,7 +14,20 @@ This directory contains example scripts demonstrating common drone control opera
 examples/
 ├── common/
 │   ├── __init__.py
-│   └── drone_helpers.py     # Shared helper functions
+│   ├── drone_helpers.py     # Shared helper functions
+│   └── telemetry_manager.py # Background telemetry (NEW)
+├── manual_control/          # Keyboard-based manual control
+│   ├── __init__.py
+│   ├── keyboard_controller.py  # Non-blocking keyboard input
+│   └── manual_control_app.py   # Main manual control app
+├── person_tracker/          # AI-based person following
+│   ├── __init__.py
+│   ├── tracker_app.py       # Main tracker application
+│   ├── tracking_controller.py  # PID controller
+│   ├── mode_manager.py      # Enable/disable control
+│   ├── distance_estimator.py   # Distance estimation
+│   ├── config.py            # Configuration
+│   └── README.md            # Tracker documentation
 ├── simple_takeoff_land.py   # Basic takeoff/land
 ├── hover_rotate.py          # Takeoff, rotate, land
 ├── mission_upload.py        # Waypoint missions
@@ -47,6 +60,42 @@ Provides reusable functions for common drone operations:
 | `create_argument_parser()`          | Create parser with standard connection options         |
 | `get_connection_string_from_args()` | Build MAVSDK connection string from args               |
 | `get_telemetry_snapshot()`          | Get current telemetry values                           |
+
+### `telemetry_manager.py` (NEW)
+
+Thread-safe background telemetry manager that solves the MAVSDK "telemetry starvation" issue.
+
+| Class/Function        | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `TelemetryManager`    | Background telemetry reader with proper async yielding |
+| `PositionData`        | Position telemetry dataclass                           |
+| `AttitudeData`        | Attitude telemetry dataclass                           |
+| `BatteryData`         | Battery telemetry dataclass                            |
+| `FlightStateData`     | Armed/in_air/mode dataclass                            |
+| `wait_for_altitude()` | Helper to wait for target altitude                     |
+| `wait_for_landed()`   | Helper to wait for landing                             |
+
+**Why TelemetryManager?**
+
+When using `async for` on MAVSDK telemetry streams with delays (e.g., `asyncio.sleep(0.5)`),
+the event loop gives too much priority to the telemetry task, causing commands (arm, takeoff)
+to not execute properly. TelemetryManager uses `asyncio.sleep(0)` internally to prevent this.
+
+```python
+from examples.common import TelemetryManager
+
+telemetry = TelemetryManager(drone)
+await telemetry.start()
+
+# Commands work while telemetry updates in background
+await drone.action.arm()
+await drone.action.takeoff()
+
+# Access latest telemetry
+print(f"Altitude: {telemetry.position.altitude_m:.2f}m")
+
+await telemetry.stop()
+```
 
 ### Classes
 
@@ -197,6 +246,73 @@ python3 pi_simple_control.py -c wifi --wifi-host 192.168.1.100 --monitor-only
 # Simple flight
 python3 pi_simple_control.py -c uart --altitude 5
 ```
+
+### Manual Control
+
+#### `manual_control/manual_control_app.py`
+Keyboard-based manual drone control:
+- WASD + Arrow keys for flight control (Mode 2 layout)
+- Works over SSH (uses pynput)
+- Position Control mode for stability
+- Integrates with mode_manager for tracking override
+
+**Control Scheme:**
+| Key              | Function               |
+| ---------------- | ---------------------- |
+| W/S              | Throttle Up/Down       |
+| A/D              | Yaw Left/Right         |
+| Arrow Up/Down    | Pitch Forward/Back     |
+| Arrow Left/Right | Roll Left/Right        |
+| Space            | Emergency Stop (hover) |
+| T                | Toggle Tracking Mode   |
+| Q                | Quit                   |
+
+```bash
+# Connect to SITL
+python3 -m examples.manual_control.manual_control_app -c tcp --tcp-host localhost
+
+# With custom sensitivity
+python3 -m examples.manual_control.manual_control_app --sensitivity 0.5
+
+# Low throttle sensitivity for gentle altitude changes
+python3 -m examples.manual_control.manual_control_app --throttle-sensitivity 0.2
+```
+
+**Dependencies:**
+```bash
+pip install pynput
+```
+
+### Person Tracking
+
+#### `person_tracker/tracker_app.py`
+AI-based person following using Hailo detection:
+- Uses Hailo AI accelerator for person detection
+- PID controller for smooth tracking
+- Enable/disable via HTTP API or RC channel
+- Manual control override support
+
+See [person_tracker/README.md](person_tracker/README.md) for detailed documentation.
+
+```bash
+# Start with camera
+python3 -m examples.person_tracker.tracker_app --input /dev/video0
+
+# Connect to SITL
+python3 -m examples.person_tracker.tracker_app --input /dev/video0 --tcp-host localhost
+
+# Control via HTTP
+curl -X POST http://localhost:8080/enable   # Start tracking
+curl -X POST http://localhost:8080/disable  # Stop tracking
+curl http://localhost:8080/status           # Check status
+```
+
+**Control Precedence:**
+1. RC Remote (physical) - Hardware safety override
+2. Manual Keyboard Control - Software override (via `manual_control_app.py`)
+3. Autonomous Tracking - Lowest priority
+
+When manual control is active (keyboard input detected), tracking is automatically inhibited.
 
 ## Common Options
 

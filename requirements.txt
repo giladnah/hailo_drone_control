@@ -1,0 +1,16 @@
+# PX4 Drone Control Requirements
+# Install with: pip install -r requirements.txt
+
+# Core MAVLink/MAVSDK
+mavsdk>=3.10.0
+
+# Keyboard input for manual control
+pynput>=1.8.0
+
+# Testing
+pytest>=9.0.0
+pytest-asyncio>=1.3.0
+
+# Optional: Type checking
+# mypy>=1.0.0
+

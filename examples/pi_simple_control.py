@@ -164,6 +164,8 @@ async def simple_flight(drone, altitude: float = 5.0) -> bool:
         await drone.action.takeoff()
 
         # Wait for altitude
+        # Note: Use asyncio.sleep(0) to yield immediately and prevent
+        # command starvation (see README.md Troubleshooting section)
         async for position in drone.telemetry.position():
             if shutdown_requested:
                 print("  Shutdown requested during takeoff")
@@ -171,7 +173,7 @@ async def simple_flight(drone, altitude: float = 5.0) -> bool:
             if position.relative_altitude_m >= altitude * 0.95:
                 print(f"  Reached {position.relative_altitude_m:.1f}m")
                 break
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0)  # Yield immediately
 
         # Hover
         if not shutdown_requested:
@@ -191,7 +193,7 @@ async def simple_flight(drone, altitude: float = 5.0) -> bool:
             if not in_air:
                 print("  Landed")
                 break
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0)  # Yield immediately
 
         print("-" * 40)
         print("Flight complete!")

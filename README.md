@@ -51,6 +51,11 @@ cp env.example .env
 
 # Make scripts executable
 chmod +x scripts/*.sh
+
+# Setup Python virtual environment (for running scripts locally)
+python3 -m venv venv_mavlink
+source venv_mavlink/bin/activate
+pip install -r requirements.txt
 ```
 
 ### 2. Start the Full Stack
@@ -177,6 +182,32 @@ curl http://localhost:8080/status           # Check status
 
 See [examples/person_tracker/README.md](examples/person_tracker/README.md) for detailed documentation.
 
+## Example: Manual Control
+
+Keyboard-based manual flight control using WASD + Arrow keys:
+
+```bash
+# Start SITL first
+./scripts/px4ctl.sh start
+
+# Run manual control (pynput is in requirements.txt)
+source venv_mavlink/bin/activate
+python -m examples.manual_control.manual_control_app -c tcp --tcp-host localhost
+```
+
+**Control Keys:**
+- `W/S` - Throttle Up/Down
+- `A/D` - Yaw Left/Right
+- `Arrow Up/Down` - Pitch Forward/Back
+- `Arrow Left/Right` - Roll Left/Right
+- `T` - Arm & Takeoff (5m)
+- `L` - Land
+- `Space` - Emergency Stop (hover)
+- `G` - Toggle person tracking
+- `Q` - Quit
+
+Manual control automatically overrides person tracking when active.
+
 ## Project Structure
 
 ```
@@ -198,6 +229,9 @@ hailo_drone_control/
 ├── examples/
 │   ├── common/             # Shared helper functions
 │   │   └── drone_helpers.py # Connection, takeoff, landing utils
+│   ├── manual_control/     # Keyboard-based manual control
+│   │   ├── keyboard_controller.py # Non-blocking keyboard input
+│   │   └── manual_control_app.py  # Main manual control app
 │   ├── person_tracker/     # Person-following drone controller
 │   │   ├── tracker_app.py  # Main tracking application
 │   │   ├── tracking_controller.py # PID controller
@@ -378,10 +412,10 @@ Connect a Raspberry Pi to control the drone via UART (production) or TCP/WiFi (t
 
 ### TCP vs WiFi (UDP)
 
-| Method | Use Case |
-|--------|----------|
+| Method                | Use Case                                                   |
+| --------------------- | ---------------------------------------------------------- |
 | **TCP** (recommended) | Reliable, works through NAT/firewalls, Pi connects to SITL |
-| **WiFi (UDP)** | Lower latency, requires same network |
+| **WiFi (UDP)**        | Lower latency, requires same network                       |
 
 ### Quick Start (UART - Production)
 
@@ -419,10 +453,10 @@ python3 examples/hover_rotate.py -c wifi --wifi-host 192.168.1.100
 python3 examples/hover_rotate.py -c uart --uart-device /dev/ttyAMA0
 ```
 
-| Script | Description |
-|--------|-------------|
+| Script                  | Description                          |
+| ----------------------- | ------------------------------------ |
 | `pi_connection_test.py` | Comprehensive connection diagnostics |
-| `pi_simple_control.py` | Minimal control example |
+| `pi_simple_control.py`  | Minimal control example              |
 
 See [docs/PI_SETUP.md](docs/PI_SETUP.md) for complete setup instructions.
 
@@ -455,12 +489,18 @@ Place scripts in `examples/` and run with:
 
 ## Example Scripts
 
-The `examples/` directory contains ready-to-use MAVSDK-Python scripts. All examples share common functionality from the `examples/common/drone_helpers.py` module, which provides:
+The `examples/` directory contains ready-to-use MAVSDK-Python scripts. All examples share common functionality from the `examples/common/` package:
 
+**drone_helpers.py**:
 - Connection management (TCP, UDP, UART)
 - Preflight checks (GPS, battery, position)
 - Takeoff/landing helpers
 - Signal handling for graceful shutdown
+
+**telemetry_manager.py** (NEW):
+- Thread-safe background telemetry reading
+- Solves the MAVSDK "telemetry starvation" issue (see Troubleshooting)
+- Provides `TelemetryManager` class for concurrent telemetry + commands
 
 | Script                   | Description                          |
 | ------------------------ | ------------------------------------ |
@@ -472,6 +512,8 @@ The `examples/` directory contains ready-to-use MAVSDK-Python scripts. All examp
 | `geofence_setup.py`      | Configure geofence boundaries        |
 | `pi_connection_test.py`  | Raspberry Pi connection diagnostics  |
 | `pi_simple_control.py`   | Minimal control example for Pi       |
+| `manual_control/`        | Keyboard-based manual flight control |
+| `person_tracker/`        | AI-based person following            |
 
 **Running Examples**:
 
@@ -485,6 +527,67 @@ The `examples/` directory contains ready-to-use MAVSDK-Python scripts. All examp
 # Monitor telemetry
 ./scripts/px4ctl.sh run examples/telemetry_monitor.py --duration 60
 ```
+
+## Troubleshooting
+
+### MAVSDK Telemetry Starvation (Commands Not Executing)
+
+**Problem**: When using `async for` on MAVSDK telemetry streams with delays, commands (arm, takeoff) don't execute properly. The telemetry shows 0.0m altitude even though the drone should be flying.
+
+**Cause**: Using `await asyncio.sleep(0.5)` inside telemetry loops gives too much priority to the telemetry task, starving command execution.
+
+**Solution**: Use `await asyncio.sleep(0)` to immediately yield control:
+
+```python
+# ❌ BAD - causes telemetry starvation
+async for pos in drone.telemetry.position():
+    print(f"Alt: {pos.relative_altitude_m}")
+    await asyncio.sleep(0.5)  # This starves other tasks!
+
+# ✓ GOOD - proper async yielding
+async for pos in drone.telemetry.position():
+    print(f"Alt: {pos.relative_altitude_m}")
+    await asyncio.sleep(0)  # Immediately yield control
+```
+
+**Better Solution**: Use the `TelemetryManager` from `examples/common/telemetry_manager.py`:
+
+```python
+from examples.common import TelemetryManager
+
+telemetry = TelemetryManager(drone)
+await telemetry.start()
+
+# Commands work while telemetry updates in background
+await drone.action.arm()
+await drone.action.takeoff()
+
+# Access latest telemetry
+print(f"Altitude: {telemetry.position.altitude_m:.2f}m")
+
+await telemetry.stop()
+```
+
+### Diagnostic Tool
+
+Use the diagnostic tool to test your connection:
+
+```bash
+# Test TCP connection
+python scripts/diagnose_connection.py -c tcp --tcp-host localhost
+
+# Test with full action test (arm/takeoff/land)
+python scripts/diagnose_connection.py --test-action
+```
+
+### Connection Issues
+
+| Issue                                         | Solution                                                        |
+| --------------------------------------------- | --------------------------------------------------------------- |
+| "Waiting for mavsdk_server to be ready" hangs | Kill existing MAVSDK processes: `pkill -f mavsdk`               |
+| Telemetry shows 0m but drone is flying        | Use `TelemetryManager` or `asyncio.sleep(0)` in loops           |
+| Commands don't execute                        | Ensure proper async yielding in telemetry loops                 |
+| TCP connection timeout                        | Check Docker container is running: `./scripts/px4ctl.sh status` |
 
 ## Documentation
 
