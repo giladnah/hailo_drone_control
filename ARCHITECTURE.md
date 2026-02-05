@@ -2,6 +2,8 @@
 
 This document describes the architecture of the containerized PX4 development environment for the Cube+ Orange flight controller.
 
+> **Related Documentation**: For a detailed academic analysis of design decisions and theoretical foundations, see [RESEARCH.md](RESEARCH.md).
+
 ## System Overview
 
 The development environment runs entirely in Docker containers, providing a reproducible and isolated setup for PX4 drone development. The architecture follows a microservices pattern inspired by projects like Frigate NVR, enabling flexible configuration and easy switching between simulation modes.

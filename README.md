@@ -380,85 +380,32 @@ ls -la /dev/cube_orange
 
 ## Raspberry Pi Connection
 
-Connect a Raspberry Pi to control the drone via UART (production) or TCP/WiFi (testing with SITL).
+Connect a Raspberry Pi to control the drone via UART (production) or TCP/UDP (testing with SITL).
 
-### Quick Start (TCP - Recommended for Testing)
-
-1. **Start SITL on host:**
-   ```bash
-   ./scripts/px4ctl.sh start
-   ```
-
-2. **Get host IP address:**
-   ```bash
-   hostname -I  # Note the IP (e.g., 192.168.1.100)
-   ```
-
-3. **On Raspberry Pi:**
-   ```bash
-   # Install MAVSDK
-   pip3 install mavsdk
-
-   # Clone repository
-   git clone <repository-url>
-   cd hailo_drone_control
-
-   # Test connection (TCP recommended - more reliable)
-   python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
-
-   # Run a flight example
-   python3 examples/simple_takeoff_land.py -c tcp --tcp-host 192.168.1.100 --altitude 5
-   ```
-
-### TCP vs WiFi (UDP)
-
-| Method                | Use Case                                                   |
-| --------------------- | ---------------------------------------------------------- |
-| **TCP** (recommended) | Reliable, works through NAT/firewalls, Pi connects to SITL |
-| **WiFi (UDP)**        | Lower latency, requires same network                       |
-
-### Quick Start (UART - Production)
-
-1. **Wire TELEM2 to Raspberry Pi GPIO:**
-   ```
-   Cube+ Orange TELEM2     Raspberry Pi
-   TX  ───────────────────  RX (GPIO 15, Pin 10)
-   RX  ───────────────────  TX (GPIO 14, Pin 8)
-   GND ───────────────────  GND (Pin 6)
-   ```
-
-2. **Setup Raspberry Pi:**
-   ```bash
-   # Run setup script (installs MAVSDK, enables UART)
-   ./scripts/setup_pi.sh
-   ```
-
-3. **Test connection:**
-   ```bash
-   python3 examples/pi_connection_test.py -c uart
-   ```
-
-### Connection Types
-
-All example scripts support three connection modes:
+**Quick Start:**
 
 ```bash
-# TCP mode (recommended for testing - reliable)
-python3 examples/hover_rotate.py -c tcp --tcp-host 192.168.1.100
+# On Raspberry Pi - TCP connection (recommended)
+python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
 
-# WiFi/UDP mode (low latency, same network)
-python3 examples/hover_rotate.py -c wifi --wifi-host 192.168.1.100
+# UDP connection (WiFi - lower latency)
+python3 examples/pi_connection_test.py -c udp --udp-host 192.168.1.100 --udp-port 14540
 
-# UART mode (production - Cube+ Orange)
-python3 examples/hover_rotate.py -c uart --uart-device /dev/ttyAMA0
+# UART connection (production - Cube+ Orange)
+python3 examples/pi_connection_test.py -c uart
 ```
 
-| Script                  | Description                          |
-| ----------------------- | ------------------------------------ |
-| `pi_connection_test.py` | Comprehensive connection diagnostics |
-| `pi_simple_control.py`  | Minimal control example              |
+**Connection Types:**
 
-See [docs/PI_SETUP.md](docs/PI_SETUP.md) for complete setup instructions.
+| Method                | Use Case                                                   | Command-Line                             |
+| --------------------- | ---------------------------------------------------------- | ---------------------------------------- |
+| **TCP** (recommended) | Reliable, works through NAT/firewalls, Pi connects to SITL | `-c tcp --tcp-host HOST`                 |
+| **UDP** (WiFi)        | Lower latency, requires same network                       | `-c udp --udp-host HOST --udp-port PORT` |
+| **UART**              | Production - Direct serial to Cube+ Orange TELEM2          | `-c uart`                                |
+
+**Note**: UDP is sometimes called "WiFi mode" but the command-line argument is `udp`.
+
+For complete setup instructions, hardware wiring diagrams, troubleshooting, and detailed examples, see **[docs/PI_SETUP.md](docs/PI_SETUP.md)**.
 
 ## Development
 
@@ -591,9 +538,15 @@ python scripts/diagnose_connection.py --test-action
 
 ## Documentation
 
-- [Raspberry Pi Setup Guide](docs/PI_SETUP.md) - Complete guide for Pi connection via UART or WiFi
-- [Open Source Solutions Reference](docs/OPEN_SOURCE_SOLUTIONS.md) - Catalog of reusable open-source components
-- [Research Notes](RESEARCH.md) - Technical architecture and design decisions
+| Document                                                               | Purpose                                                             |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [ARCHITECTURE.md](ARCHITECTURE.md)                                     | System architecture and technical implementation details            |
+| [RESEARCH.md](RESEARCH.md)                                             | Academic analysis of design decisions and theoretical foundations   |
+| [docs/PI_SETUP.md](docs/PI_SETUP.md)                                   | Complete guide for Raspberry Pi connection via UART, TCP, or UDP    |
+| [docs/OPEN_SOURCE_SOLUTIONS.md](docs/OPEN_SOURCE_SOLUTIONS.md)         | Catalog of reusable open-source components and integration patterns |
+| [examples/README.md](examples/README.md)                               | Documentation for all example scripts and usage patterns            |
+| [examples/person_tracker/README.md](examples/person_tracker/README.md) | Person tracking system documentation                                |
+| [examples/manual_control/README.md](examples/manual_control/README.md) | Keyboard-based manual control documentation                         |
 
 ## Resources
 

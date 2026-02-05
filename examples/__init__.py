@@ -20,9 +20,9 @@ Common Module:
 
 Connection Types:
     All examples support multiple connection types via command line:
-    - TCP (default): --tcp-host HOST --tcp-port PORT
-    - UDP: -c udp --udp-host HOST --udp-port PORT
-    - UART: -c uart --uart-device DEVICE --uart-baud BAUD
+    - TCP (default, recommended): -c tcp --tcp-host HOST --tcp-port PORT
+    - UDP (WiFi - low latency): -c udp --udp-host HOST --udp-port PORT
+    - UART (production): -c uart --uart-device DEVICE --uart-baud BAUD
 
 Usage:
     # Run from project root with Docker:

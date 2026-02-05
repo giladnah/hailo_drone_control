@@ -23,21 +23,23 @@ This guide covers three connection methods:
 |--------|----------|-------------------|
 | **UART** | Production - Direct serial to Cube+ Orange TELEM2 | `serial:///dev/ttyAMA0:57600` |
 | **TCP** | Testing - Reliable network connection to SITL (recommended) | `tcp://192.168.1.100:5760` |
-| **WiFi (UDP)** | Testing - Low-latency UDP connection to SITL | `udp://192.168.1.100:14540` |
+| **UDP** (WiFi) | Testing - Low-latency UDP connection to SITL | `udp://192.168.1.100:14540` or `udpin://0.0.0.0:14540` |
+
+**Note**: UDP is sometimes called "WiFi mode" but the command-line argument is `udp`.
 
 All methods use the same Python code - only the connection string changes.
 
 ## Connection Types Explained
 
-### TCP vs WiFi (UDP) - When to Use Each
+### TCP vs UDP (WiFi) - When to Use Each
 
-| Aspect | TCP (Recommended for Pi) | WiFi (UDP) |
+| Aspect | TCP (Recommended for Pi) | UDP (WiFi) |
 |--------|--------------------------|------------|
 | **Protocol** | TCP - Connection-oriented | UDP - Connectionless |
 | **Reliability** | Guaranteed delivery, ordered packets | May lose packets, no ordering |
-| **Connection** | Pi connects TO SITL server | SITL pushes TO Pi's IP |
+| **Connection** | Pi connects TO SITL server | SITL pushes TO Pi's IP (or Pi listens) |
 | **NAT/Firewall** | Works easily (client initiates) | Harder (needs bidirectional) |
-| **Setup** | Just need SITL host IP | Need to configure SITL to push to Pi |
+| **Setup** | Just need SITL host IP | Need to configure SITL to push to Pi or use udpin |
 | **Latency** | Slightly higher | Lower |
 | **Best For** | Remote connections, reliability | Same-network, real-time control |
 
@@ -320,7 +322,7 @@ python3 examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
 - TCP has issues in your environment
 
 ```bash
-python3 examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+python3 examples/pi_connection_test.py -c udp --udp-host 192.168.1.100 --udp-port 14540
 ```
 
 ## Testing the Connection
@@ -339,8 +341,8 @@ Then use the test scripts to verify connectivity:
 # TCP connection test (recommended)
 python examples/pi_connection_test.py -c tcp --tcp-host 192.168.1.100
 
-# WiFi (UDP) connection test
-python examples/pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+# UDP (WiFi) connection test
+python examples/pi_connection_test.py -c udp --udp-host 192.168.1.100 --udp-port 14540
 
 # UART connection test
 python examples/pi_connection_test.py -c uart
@@ -427,8 +429,8 @@ cd hailo_drone_control
 ### Run Examples
 
 ```bash
-# WiFi mode (testing with SITL)
-python3 examples/simple_takeoff_land.py -c wifi --wifi-host 192.168.1.100 --altitude 5
+# UDP mode (testing with SITL - WiFi)
+python3 examples/simple_takeoff_land.py -c udp --udp-host 192.168.1.100 --udp-port 14540 --altitude 5
 
 # UART mode (production with Cube+ Orange)
 python3 examples/simple_takeoff_land.py -c uart --altitude 5
@@ -437,7 +439,7 @@ python3 examples/simple_takeoff_land.py -c uart --altitude 5
 python3 examples/hover_rotate.py -c uart --altitude 10 --rotation 360
 
 # Mission upload
-python3 examples/mission_upload.py -c wifi --wifi-host 192.168.1.100 --altitude 20
+python3 examples/mission_upload.py -c tcp --tcp-host 192.168.1.100 --altitude 20
 ```
 
 ### Environment Variables
@@ -445,10 +447,15 @@ python3 examples/mission_upload.py -c wifi --wifi-host 192.168.1.100 --altitude 
 Instead of command-line arguments, you can use environment variables:
 
 ```bash
-# For WiFi
-export PI_CONNECTION_TYPE=wifi
-export PI_WIFI_HOST=192.168.1.100
-export PI_WIFI_PORT=14540
+# For UDP (WiFi)
+export PI_CONNECTION_TYPE=udp
+export PI_UDP_HOST=0.0.0.0
+export PI_UDP_PORT=14540
+
+# For TCP (recommended)
+export PI_CONNECTION_TYPE=tcp
+export PI_TCP_HOST=192.168.1.100
+export PI_TCP_PORT=5760
 
 # For UART
 export PI_CONNECTION_TYPE=uart
@@ -539,7 +546,8 @@ Error: Invalid connection string
 
 **Valid formats:**
 - UART: `serial:///dev/ttyAMA0:57600`
-- WiFi: `udp://192.168.1.100:14540`
+- UDP (WiFi): `udp://192.168.1.100:14540` or `udpin://0.0.0.0:14540`
+- TCP: `tcp://192.168.1.100:5760`
 
 ### Debug Mode
 
@@ -579,7 +587,7 @@ Ensure these parameters are set in QGroundControl:
 | Mode | Connection String | When to Use |
 |------|-------------------|-------------|
 | **TCP (recommended)** | `tcp://192.168.1.100:5760` | Remote connections, reliability needed |
-| **WiFi (UDP)** | `udp://192.168.1.100:14540` | Same network, low latency needed |
+| **UDP (WiFi)** | `udp://192.168.1.100:14540` or `udpin://0.0.0.0:14540` | Same network, low latency needed |
 | **UART** | `serial:///dev/ttyAMA0:57600` | Production with Cube+ Orange |
 
 ### Command Line Examples
@@ -588,8 +596,8 @@ Ensure these parameters are set in QGroundControl:
 # TCP connection (recommended for Pi)
 python3 examples/simple_takeoff_land.py -c tcp --tcp-host 192.168.1.100
 
-# WiFi (UDP) connection
-python3 examples/simple_takeoff_land.py -c wifi --wifi-host 192.168.1.100
+# UDP connection (WiFi - low latency)
+python3 examples/simple_takeoff_land.py -c udp --udp-host 192.168.1.100 --udp-port 14540
 
 # UART connection (production)
 python3 examples/simple_takeoff_land.py -c uart

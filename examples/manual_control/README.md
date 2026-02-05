@@ -19,11 +19,14 @@ pip install pynput
 ## Usage
 
 ```bash
-# Connect to SITL
+# Connect to SITL via TCP (recommended)
 python -m examples.manual_control.manual_control_app -c tcp --tcp-host localhost
 
-# Connect via UDP
-python -m examples.manual_control.manual_control_app -c udp --udp-port 14540
+# Connect via UDP (WiFi - low latency)
+python -m examples.manual_control.manual_control_app -c udp --udp-host 192.168.1.100 --udp-port 14540
+
+# Connect via UART (production - Cube+ Orange)
+python -m examples.manual_control.manual_control_app -c uart
 
 # Custom sensitivity
 python -m examples.manual_control.manual_control_app --sensitivity 0.5 --throttle-sensitivity 0.2
@@ -58,16 +61,20 @@ Manual control automatically inhibits tracking when active. Tracking resumes aft
 
 ## Options
 
-| Option                   | Default     | Description                     |
-| ------------------------ | ----------- | ------------------------------- |
-| `-c, --connection-type`  | `tcp`       | Connection type: tcp, udp, uart |
-| `--tcp-host`             | `localhost` | TCP host for drone connection   |
-| `--tcp-port`             | `5760`      | TCP port for drone connection   |
-| `--sensitivity`          | `0.7`       | Control sensitivity (0.1-1.0)   |
-| `--throttle-sensitivity` | `0.3`       | Throttle sensitivity (0.1-1.0)  |
-| `--http-port`            | `8080`      | HTTP API port for mode manager  |
-| `--manual-timeout`       | `3.0`       | Manual mode timeout in seconds  |
-| `-v, --verbose`          | `False`     | Enable verbose logging          |
+| Option                   | Default        | Description                     |
+| ------------------------ | -------------- | ------------------------------- |
+| `-c, --connection-type`  | `tcp`          | Connection type: tcp, udp, uart |
+| `--tcp-host`             | `localhost`    | TCP host for drone connection   |
+| `--tcp-port`             | `5760`         | TCP port for drone connection   |
+| `--udp-host`             | `0.0.0.0`      | UDP host (WiFi mode)            |
+| `--udp-port`             | `14540`        | UDP port (WiFi mode)            |
+| `--uart-device`          | `/dev/ttyAMA0` | UART device path                |
+| `--uart-baud`            | `57600`        | UART baud rate                  |
+| `--sensitivity`          | `0.7`          | Control sensitivity (0.1-1.0)   |
+| `--throttle-sensitivity` | `0.3`          | Throttle sensitivity (0.1-1.0)  |
+| `--http-port`            | `8080`         | HTTP API port for mode manager  |
+| `--manual-timeout`       | `3.0`          | Manual mode timeout in seconds  |
+| `-v, --verbose`          | `False`        | Enable verbose logging          |
 
 ## Architecture
 

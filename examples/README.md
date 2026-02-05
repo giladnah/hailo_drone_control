@@ -223,8 +223,8 @@ Comprehensive connection diagnostics for Raspberry Pi:
 - Provides connection troubleshooting
 
 ```bash
-# WiFi mode (testing with SITL)
-python3 pi_connection_test.py -c wifi --wifi-host 192.168.1.100
+# UDP mode (testing with SITL - WiFi)
+python3 pi_connection_test.py -c udp --udp-host 192.168.1.100 --udp-port 14540
 
 # UART mode (production with Cube+ Orange)
 python3 pi_connection_test.py -c uart
@@ -241,7 +241,7 @@ Minimal control example for Raspberry Pi:
 
 ```bash
 # Monitor only (no flight)
-python3 pi_simple_control.py -c wifi --wifi-host 192.168.1.100 --monitor-only
+python3 pi_simple_control.py -c udp --udp-host 192.168.1.100 --udp-port 14540 --monitor-only
 
 # Simple flight
 python3 pi_simple_control.py -c uart --altitude 5
@@ -295,10 +295,10 @@ AI-based person following using Hailo detection:
 See [person_tracker/README.md](person_tracker/README.md) for detailed documentation.
 
 ```bash
-# Start with camera
+# Start with camera (connects via TCP by default)
 python3 -m examples.person_tracker.tracker_app --input /dev/video0
 
-# Connect to SITL
+# Connect to SITL with explicit TCP host
 python3 -m examples.person_tracker.tracker_app --input /dev/video0 --tcp-host localhost
 
 # Control via HTTP
@@ -318,24 +318,26 @@ When manual control is active (keyboard input detected), tracking is automatical
 
 All examples support these connection options:
 
-| Option                    | Description                               | Default                                |
-| ------------------------- | ----------------------------------------- | -------------------------------------- |
-| `-c`, `--connection-type` | Connection type: `tcp`, `wifi`, or `uart` | `wifi` or `PI_CONNECTION_TYPE` env     |
-| `--tcp-host`              | TCP host IP address                       | `localhost` or `PI_TCP_HOST` env       |
-| `--tcp-port`              | TCP port                                  | `5760` or `PI_TCP_PORT` env            |
-| `--wifi-host`             | WiFi (UDP) host IP address                | `localhost` or `PI_WIFI_HOST` env      |
-| `--wifi-port`             | WiFi (UDP) port                           | `14540` or `PI_WIFI_PORT` env          |
-| `--uart-device`           | UART serial device path                   | `/dev/ttyAMA0` or `PI_UART_DEVICE` env |
-| `--uart-baud`             | UART baud rate                            | `57600` or `PI_UART_BAUD` env          |
-| `--verbose` / `-v`        | Enable verbose output                     | `False`                                |
+| Option                    | Description                              | Default                                |
+| ------------------------- | ---------------------------------------- | -------------------------------------- |
+| `-c`, `--connection-type` | Connection type: `tcp`, `udp`, or `uart` | `tcp` or `PI_CONNECTION_TYPE` env      |
+| `--tcp-host`              | TCP host IP address                      | `localhost` or `PI_TCP_HOST` env       |
+| `--tcp-port`              | TCP port                                 | `5760` or `PI_TCP_PORT` env            |
+| `--udp-host`              | UDP host IP address (WiFi mode)          | `0.0.0.0` or `PI_UDP_HOST` env         |
+| `--udp-port`              | UDP port (WiFi mode)                     | `14540` or `PI_UDP_PORT` env           |
+| `--uart-device`           | UART serial device path                  | `/dev/ttyAMA0` or `PI_UART_DEVICE` env |
+| `--uart-baud`             | UART baud rate                           | `57600` or `PI_UART_BAUD` env          |
+| `--verbose` / `-v`        | Enable verbose output                    | `False`                                |
 
-### TCP vs WiFi (UDP)
+### TCP vs UDP (WiFi)
 
 | Method                | Protocol | Best For                                           |
 | --------------------- | -------- | -------------------------------------------------- |
 | **TCP** (recommended) | TCP      | Remote connections, reliability, works through NAT |
-| **WiFi**              | UDP      | Same network, minimum latency                      |
+| **UDP** (WiFi)        | UDP      | Same network, minimum latency                      |
 | **UART**              | Serial   | Production with Cube+ Orange                       |
+
+**Note**: UDP is sometimes called "WiFi mode" but the command-line argument is `udp`.
 
 ### Connection Examples
 
@@ -343,8 +345,8 @@ All examples support these connection options:
 # TCP connection to SITL (recommended for Raspberry Pi)
 python3 simple_takeoff_land.py -c tcp --tcp-host 192.168.1.100 --altitude 5
 
-# WiFi (UDP) connection to SITL
-python3 simple_takeoff_land.py -c wifi --wifi-host 192.168.1.100 --altitude 5
+# UDP connection to SITL (WiFi mode - low latency)
+python3 simple_takeoff_land.py -c udp --udp-host 192.168.1.100 --udp-port 14540 --altitude 5
 
 # UART connection to Cube+ Orange
 python3 simple_takeoff_land.py -c uart --altitude 5
