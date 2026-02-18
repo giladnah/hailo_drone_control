@@ -54,7 +54,6 @@ This document catalogs well-documented, tested open-source solutions that can be
 - Official airframe configurations (`ROMFS/px4fmu_common/init.d/airframes/`)
 - SITL simulation scripts
 - Parameter reference files
-- `.devcontainer` examples
 
 ---
 
@@ -310,7 +309,6 @@ async def test_heartbeat_received():
 
 **Reusable Patterns**:
 - Docker + ROS2 Humble + PX4 integration
-- `.devcontainer` configuration
 - Launch file organization
 - RViz visualization setup
 

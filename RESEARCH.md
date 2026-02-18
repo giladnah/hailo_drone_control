@@ -142,25 +142,6 @@ This setup mimics the Frigate architecture where a central service handles data 
 
 Docker's bridge network can sometimes interfere with MAVLink's reliance on UDP broadcasting. To mitigate this, explicit port mappings are defined in the `docker-compose.yml`. QGroundControl running on the host typically expects MAVLink data on UDP port 14550. By exposing this port and manually creating a "Comm Link" in QGC directed at the container's IP (e.g., 172.17.0.1), a stable telemetry link is maintained.
 
-## VS Code Dev Containers and Collaborative Workflow
-
-The use of VS Code Dev Containers transforms the development environment into a portable, code-defined workspace. The `.devcontainer` directory contains the configuration files necessary to rebuild the entire environment, ensuring that all developers on a team are using identical versions of compilers, libraries, and simulation models.
-
-### The devcontainer.json Configuration
-
-The `devcontainer.json` file orchestrates the container's interaction with the host system. It handles the automatic installation of VS Code extensions, such as the C/C++ tools and CMake integration, which are essential for navigating the massive PX4 and ArduPilot source bases.
-
-```json
-{
-  "runArgs": ["--gpus", "all", "--privileged"],
-  "forwardPorts": [...]
-}
-```
-
-### Automation via Post-Create Scripts
-
-A `postCreateCommand` is used to automate final workspace preparation. This script typically clones the autopilot source code (if not already present), initializes submodules, and builds the Micro-XRCE-DDS Agent. This "zero-touch" setup allows a developer to go from a fresh git clone to running a simulation in approximately 15 minutes, a task that traditionally took days of manual configuration.
-
 ## Parameter Management and Airframe Selection
 
 Effective configuration management requires the ability to switch between different vehicle parameters and airframe definitions. This is achieved by utilizing version-controlled parameter files mapped into the container, similar to how Frigate maps camera-specific configurations.
