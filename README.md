@@ -224,8 +224,7 @@ hailo_drone_control/
 │   ├── px4ctl.sh           # Main CLI tool
 │   ├── mavlink_connection.py # Connection config utilities
 │   ├── wait_for_mavlink.py # Health check utility
-│   ├── setup_udev.sh       # Device rules (HITL)
-│   └── post_create.sh      # Dev container setup
+│   └── setup_udev.sh       # Device rules (HITL)
 ├── examples/
 │   ├── common/             # Shared helper functions
 │   │   └── drone_helpers.py # Connection, takeoff, landing utils
@@ -419,12 +418,6 @@ cd /workspace/PX4-Autopilot
 make px4_sitl_default          # Build SITL
 make px4_fmu-v6x_default       # Build Cube+ Orange firmware
 ```
-
-### VS Code Dev Containers
-
-1. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-2. Open folder in VS Code
-3. Click "Reopen in Container"
 
 ### Adding Custom Scripts
 

@@ -232,8 +232,7 @@ hailo_drone_control/
 ├── scripts/
 │   ├── px4ctl.sh               # Main CLI tool
 │   ├── wait_for_mavlink.py     # Health check
-│   ├── setup_udev.sh           # Device rules
-│   └── post_create.sh          # Dev container init
+│   └── setup_udev.sh           # Device rules
 ├── examples/
 │   └── hover_rotate.py         # Demo flight script
 ├── tests/
