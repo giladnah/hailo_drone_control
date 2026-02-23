@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Offboard Yaw Wiggle Script (Position Mode).
+Offboard Yaw Wiggle Script (Velocity Mode).
 
 Holds the drone's current position when offboard mode is activated via RC switch,
-then performs a yaw wiggle while maintaining position. Uses MAVSDK PositionNedYaw
-for GPS-based position hold.
+then performs a yaw wiggle while maintaining position. Uses VelocityBodyYawspeed
+for smoother yaw control: a P-controller converts position error into body-frame
+velocity commands, and the yaw wiggle is sent as an analytical yaw rate (derivative
+of the sine wave) rather than discrete yaw angle jumps.
 
 Safety features:
     - Waits for GPS fix (3D or better) before accepting offboard commands
@@ -26,7 +28,7 @@ import asyncio
 import math
 import signal
 from mavsdk import System
-from mavsdk.offboard import PositionNedYaw, OffboardError
+from mavsdk.offboard import VelocityBodyYawspeed, OffboardError
 from mavsdk.telemetry import FixType
 
 # --- CONFIGURATION ---
@@ -35,6 +37,8 @@ WIGGLE_AMPLITUDE = 15.0   # Degrees of yaw wiggle (peak-to-peak: ±15°)
 WIGGLE_SPEED = 0.8        # Wiggle speed (rad/s multiplier for sin wave)
 # Peak yaw rate = AMPLITUDE × SPEED = 12°/s  (very gentle)
 # Full cycle period = 2π / SPEED ≈ 7.9 seconds
+POSITION_HOLD_KP = 0.7    # P-gain for position hold (velocity_m_s = KP * error_m)
+MAX_HOLD_VELOCITY = 2.0   # Clamp velocity from position P-controller (m/s)
 MIN_ALTITUDE_M = 2.0      # Minimum altitude (meters) to allow offboard lock
 MIN_GPS_SATELLITES = 6     # Minimum number of GPS satellites for safe operation
 MIN_BATTERY_PERCENT = 0.20  # Minimum battery level (20%) to allow offboard
@@ -74,10 +78,11 @@ def _normalize_yaw(yaw_deg: float) -> float:
 async def run():
     """
     Main function: connects to drone, tracks position/yaw, and performs
-    yaw wiggle in offboard mode while holding position.
+    yaw wiggle in offboard mode while holding position via velocity commands.
 
-    Includes safety checks for GPS fix, position validity, minimum altitude,
-    and battery level. All blocking waits have timeouts.
+    Uses a P-controller to convert position error into body-frame velocity and
+    sends analytical yaw rate for smooth wiggle. Includes safety checks for
+    GPS fix, position validity, minimum altitude, and battery level.
     """
     global _shutdown_requested
 
@@ -194,8 +199,7 @@ async def run():
                 async for angle in drone.telemetry.attitude_euler():
                     if _shutdown_requested:
                         return
-                    if not is_offboard:
-                        current_yaw = angle.yaw_deg
+                    current_yaw = angle.yaw_deg
                     await asyncio.sleep(0)
             except Exception as e:
                 print(f"[SAFETY] WARNING: Attitude telemetry failed: {e}")
@@ -208,16 +212,14 @@ async def run():
                 async for pos_vel in drone.telemetry.position_velocity_ned():
                     if _shutdown_requested:
                         return
-                    if not is_offboard:
-                        current_north = pos_vel.position.north_m
-                        current_east = pos_vel.position.east_m
-                        current_down = pos_vel.position.down_m
-                        # Reason: Mark position as valid only after first real update.
-                        if not position_valid:
-                            position_valid = True
-                            print(f"-- [POSITION OK] First NED reading: "
-                                  f"N={current_north:.2f} E={current_east:.2f} "
-                                  f"D={current_down:.2f}")
+                    current_north = pos_vel.position.north_m
+                    current_east = pos_vel.position.east_m
+                    current_down = pos_vel.position.down_m
+                    if not position_valid:
+                        position_valid = True
+                        print(f"-- [POSITION OK] First NED reading: "
+                              f"N={current_north:.2f} E={current_east:.2f} "
+                              f"D={current_down:.2f}")
                     await asyncio.sleep(0)
             except Exception as e:
                 print(f"[SAFETY] CRITICAL: Position telemetry failed: {e}")
@@ -348,19 +350,19 @@ async def run():
     print(f"-- Battery: {current_battery * 100:.0f}%")
 
     # 6. PREPARE FOR BUMPLESS TRANSFER
-    # Reason: We send position commands continuously BEFORE switching to offboard
+    # Reason: We send velocity commands continuously BEFORE switching to offboard
     # so the transition is seamless when the RC switch is flipped.
     print("-- Sending offboard commands continuously (waiting for RC switch)...")
     print("-- NOTE: Offboard mode will be activated by your RC switch, not this script!")
 
     print("\n" + "=" * 60)
-    print(" STATUS: READY (Position Hold + Yaw Wiggle)")
-    print(" MODE:   Position (GPS-based)")
+    print(" STATUS: READY (Velocity Hold + Yaw Wiggle)")
+    print(" MODE:   VelocityBodyYawspeed (P-controller + yaw rate)")
     print(f" SAFETY: Min altitude: {MIN_ALTITUDE_M}m | Min GPS sats: {MIN_GPS_SATELLITES}")
     print(f"         Min battery: {MIN_BATTERY_PERCENT * 100:.0f}% | GPS fix: 3D+")
-    print(" LOGIC:  Script tracks current NED position and yaw.")
-    print("         On offboard switch, holds position & wiggles yaw.")
-    print("         Commands sent continuously - ready for RC switch.")
+    print(f" CTRL:   Kp={POSITION_HOLD_KP} | Max vel={MAX_HOLD_VELOCITY}m/s")
+    print("         Yaw wiggle via analytical rate (no angle jumps).")
+    print("         Commands sent at 50Hz - ready for RC switch.")
     print(" ACTION: 1. Arm & Fly Manually (above 2m)")
     print("         2. Flip RC Switch to Offboard -> Holds position & Wiggles")
     print("=" * 60 + "\n")
@@ -368,22 +370,42 @@ async def run():
     # 7. CONTROL LOOP
     last_print_time = 0.0
     consecutive_errors = 0
-    MAX_CONSECUTIVE_ERRORS = 20  # ~1 second at 20Hz before giving up
+    MAX_CONSECUTIVE_ERRORS = 50  # ~1 second at 50Hz before giving up
 
     try:
         while not _shutdown_requested:
             if is_offboard:
-                # --- ACTIVE MODE (Offboard): Hold position, wiggle yaw ---
+                # --- ACTIVE MODE: velocity P-controller + yaw rate ---
                 elapsed = asyncio.get_running_loop().time() - wiggle_start_time
 
-                # Wiggle yaw around locked heading
-                yaw_offset = math.sin(elapsed * WIGGLE_SPEED) * WIGGLE_AMPLITUDE
-                target_yaw = _normalize_yaw(locked_yaw + yaw_offset)
+                # Position error in NED frame
+                err_n = locked_north - current_north
+                err_e = locked_east - current_east
+                err_d = locked_down - current_down
+
+                # P-controller with clamping to produce NED velocities
+                vel_n = max(-MAX_HOLD_VELOCITY,
+                            min(MAX_HOLD_VELOCITY, POSITION_HOLD_KP * err_n))
+                vel_e = max(-MAX_HOLD_VELOCITY,
+                            min(MAX_HOLD_VELOCITY, POSITION_HOLD_KP * err_e))
+                vel_d = max(-MAX_HOLD_VELOCITY,
+                            min(MAX_HOLD_VELOCITY, POSITION_HOLD_KP * err_d))
+
+                # Rotate NED velocity into body frame using current yaw
+                yaw_rad = math.radians(current_yaw)
+                cos_yaw = math.cos(yaw_rad)
+                sin_yaw = math.sin(yaw_rad)
+                vel_forward = vel_n * cos_yaw + vel_e * sin_yaw
+                vel_right = -vel_n * sin_yaw + vel_e * cos_yaw
+
+                # Analytical yaw rate: d/dt[sin(t*S)*A] = cos(t*S)*S*A
+                yaw_rate = (math.cos(elapsed * WIGGLE_SPEED)
+                            * WIGGLE_SPEED * WIGGLE_AMPLITUDE)
 
                 try:
-                    await drone.offboard.set_position_ned(
-                        PositionNedYaw(
-                            locked_north, locked_east, locked_down, target_yaw
+                    await drone.offboard.set_velocity_body(
+                        VelocityBodyYawspeed(
+                            vel_forward, vel_right, vel_d, yaw_rate
                         )
                     )
                     consecutive_errors = 0
@@ -401,43 +423,37 @@ async def run():
                     if consecutive_errors <= 3:
                         print(f"[SAFETY] Command send error: {e}")
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-                        print("[SAFETY] CRITICAL: Communication lost! Exiting control loop.")
+                        print("[SAFETY] CRITICAL: Communication lost! "
+                              "Exiting control loop.")
                         break
 
-                # Print status every second
+                # Print status every 2s (reduced to minimize event loop stalls)
                 current_time = asyncio.get_running_loop().time()
-                if current_time - last_print_time >= 1.0:
+                if current_time - last_print_time >= 2.0:
                     print(
-                        f"   [OFFBOARD] Pos: N={locked_north:.2f} E={locked_east:.2f} "
-                        f"D={locked_down:.2f} (alt: {-locked_down:.1f}m) | "
-                        f"Yaw: {target_yaw:.1f}° (locked: {locked_yaw:.1f}°) | "
+                        f"   [OFFBOARD] Err: N={err_n:+.2f} E={err_e:+.2f} "
+                        f"D={err_d:+.2f} | Yaw rate: {yaw_rate:+.1f}°/s | "
                         f"Batt: {current_battery * 100:.0f}%"
                     )
                     last_print_time = current_time
 
             else:
-                # --- PASSIVE MODE (Syncing): Send current position to match state ---
-                # Reason: Continuous commands ensure no jump when the RC switch flips.
-                # Only send if we have valid position data.
+                # Reason: Continuous zero-velocity commands maintain the >2Hz
+                # heartbeat so PX4 accepts offboard when the RC switch flips.
                 if position_valid:
                     try:
-                        await drone.offboard.set_position_ned(
-                            PositionNedYaw(
-                                current_north, current_east, current_down,
-                                _normalize_yaw(current_yaw)
-                            )
+                        await drone.offboard.set_velocity_body(
+                            VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0)
                         )
                         consecutive_errors = 0
                     except (OffboardError, Exception):
-                        # Reason: In passive mode, errors are less critical since
-                        # the pilot has manual control. Silently retry.
                         consecutive_errors += 1
                         if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                             print("[SAFETY] WARNING: Cannot send setpoints. "
                                   "Offboard switch may not work.")
-                            consecutive_errors = 0  # Reset to avoid spam
+                            consecutive_errors = 0
 
-            await asyncio.sleep(0.05)  # 20Hz
+            await asyncio.sleep(0.02)  # 50Hz
 
     finally:
         print("\n-- Shutting down...")
