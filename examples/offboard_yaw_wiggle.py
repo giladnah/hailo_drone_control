@@ -9,7 +9,6 @@ velocity commands, and the yaw wiggle is sent as an analytical yaw rate (derivat
 of the sine wave) rather than discrete yaw angle jumps.
 
 Safety features:
-    - Waits for GPS fix (3D or better) before accepting offboard commands
     - Validates position data is being received before allowing offboard lock
     - Rejects offboard if altitude is too low (below MIN_ALTITUDE_M)
     - Monitors battery level and rejects offboard if too low
@@ -29,7 +28,6 @@ import math
 import signal
 from mavsdk import System
 from mavsdk.offboard import VelocityBodyYawspeed, OffboardError
-from mavsdk.telemetry import FixType
 
 # --- CONFIGURATION ---
 CONNECTION_STRING = "serial:///dev/ttyACM0:115200"
@@ -40,16 +38,10 @@ WIGGLE_SPEED = 0.8        # Wiggle speed (rad/s multiplier for sin wave)
 POSITION_HOLD_KP = 0.7    # P-gain for position hold (velocity_m_s = KP * error_m)
 MAX_HOLD_VELOCITY = 2.0   # Clamp velocity from position P-controller (m/s)
 MIN_ALTITUDE_M = 2.0      # Minimum altitude (meters) to allow offboard lock
-MIN_GPS_SATELLITES = 6     # Minimum number of GPS satellites for safe operation
 MIN_BATTERY_PERCENT = 0.20  # Minimum battery level (20%) to allow offboard
 CONNECTION_TIMEOUT = 30.0   # Seconds to wait for drone connection
-GPS_TIMEOUT = 60.0          # Seconds to wait for GPS fix
 HEALTH_TIMEOUT = 60.0       # Seconds to wait for health checks
 TELEMETRY_INIT_TIMEOUT = 12.0  # Seconds to wait for telemetry initialization
-
-# Reason: GPS fix types that provide altitude (3D). A 2D fix has no altitude
-# data, making NED down values unreliable for safe position hold.
-REQUIRED_FIX_TYPES = {FixType.FIX_3D, FixType.FIX_DGPS, FixType.RTK_FLOAT, FixType.RTK_FIXED}
 
 # Global shutdown flag for signal handling
 _shutdown_requested = False
@@ -112,34 +104,10 @@ async def run():
         print(f"[SAFETY] ERROR: Connection timeout after {CONNECTION_TIMEOUT}s. Exiting.")
         return
 
-    # 2. WAIT FOR GPS FIX (with timeout and fix type validation)
-    # Reason: Position mode requires accurate 3D GPS. Without it, NED coordinates
-    # can be wrong and the drone could fly to an unintended location.
-    print("-- Waiting for GPS fix (3D or better)...")
-    gps_ok = False
-    gps_start = asyncio.get_running_loop().time()
+    # 2. GPS INFO (non-blocking, for operator awareness)
     async for gps_info in drone.telemetry.gps_info():
-        elapsed = asyncio.get_running_loop().time() - gps_start
-        num_sats = gps_info.num_satellites
-        fix_type = gps_info.fix_type
-        print(f"   GPS: {num_sats} satellites, fix type: {fix_type}")
-
-        if num_sats >= MIN_GPS_SATELLITES and fix_type in REQUIRED_FIX_TYPES:
-            print(f"-- [GPS OK] {num_sats} satellites, fix: {fix_type} "
-                  f"(min: {MIN_GPS_SATELLITES} sats, 3D fix).")
-            gps_ok = True
-            break
-
-        if elapsed > GPS_TIMEOUT:
-            print(f"[SAFETY] ERROR: GPS timeout after {GPS_TIMEOUT}s. Exiting.")
-            break
-
-        if _shutdown_requested:
-            return
-
-    if not gps_ok:
-        print("[SAFETY] ERROR: GPS fix not acquired. Exiting.")
-        return
+        print(f"-- GPS status: {gps_info.num_satellites} sats, fix: {gps_info.fix_type}")
+        break
 
     # 3. WAIT FOR HEALTH CHECKS (with timeout)
     print("-- Waiting for position estimate to be OK...")
@@ -358,8 +326,7 @@ async def run():
     print("\n" + "=" * 60)
     print(" STATUS: READY (Velocity Hold + Yaw Wiggle)")
     print(" MODE:   VelocityBodyYawspeed (P-controller + yaw rate)")
-    print(f" SAFETY: Min altitude: {MIN_ALTITUDE_M}m | Min GPS sats: {MIN_GPS_SATELLITES}")
-    print(f"         Min battery: {MIN_BATTERY_PERCENT * 100:.0f}% | GPS fix: 3D+")
+    print(f" SAFETY: Min altitude: {MIN_ALTITUDE_M}m | Min battery: {MIN_BATTERY_PERCENT * 100:.0f}%")
     print(f" CTRL:   Kp={POSITION_HOLD_KP} | Max vel={MAX_HOLD_VELOCITY}m/s")
     print("         Yaw wiggle via analytical rate (no angle jumps).")
     print("         Commands sent at 50Hz - ready for RC switch.")
